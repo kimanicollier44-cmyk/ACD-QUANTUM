@@ -10,6 +10,8 @@ One `main.py`, pure Python standard library, zero dependencies, offline and dete
 
 The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA, plus HQC), **QKD**, **QRNG**, **Crypto Discovery / Agility**, and **HNDL Defense**.
 
+**Merged in:** a **Google Earth layer** (real HQ coordinates for all 30 bodies, KML export for Google Earth, haversine distances), the **Gemini Argon 4 Extended Thinking DECIDER** seat (MAP→MODEL→STRESS→DECIDE, trace-hashed, tighten-only, names-only key, no live calls), the **SIx Neural Core** as the interface core driving every run (5-state machine + hash-chained audit ledger), and a **Recommended Quantum Docker Images** catalog of Darion's own `credkellar/` fleet with a branch/topic recommendation engine.
+
 > Honest limits: the QKD and QRNG modules are classical simulations of quantum protocols. They use no real quantum hardware and produce no true quantum randomness. Real migration must use validated implementations of the NIST standards.
 
 ## 🧰 Tech Stack Badges & Full Architecture Tech Stack
@@ -23,9 +25,13 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 
 ### 💻 Core Programming Languages & Core Systems
 
-- **Python 3.12** — the entire project is ONE file, `main.py`, pure standard library (`argparse`, `hashlib`, `random`, `sys`)
+- **Python 3.12** — the entire project is ONE file, `main.py`, pure standard library (`argparse`, `hashlib`, `json`, `math`, `os`, `random`, `sys`, `xml`)
 - **Deterministic engines** — seeded BB84 simulation, SHA-256 counter-expansion QRNG simulation, Mosca HNDL calculator
 - **Data-first design** — the Top 15 National / International structure trees are typed data in `main.py`, rendered as text trees
+- **Google Earth / KML** — HQ lat/lon for all 30 bodies, well-formed KML 2.2 export (one Placemark per body), haversine great-circle distances; no Google API key or network needed
+- **Gemini Argon 4 Extended Thinking** — DECIDER seat (`gemini-argon-4`, engine gemini-2.5-pro, model google/gemini-carbon-4-extended-pro-thinking), MAP→MODEL→STRESS→DECIDE with sha256 trace, tiers 2048/8192/32768 by stakes, `GEMINI_API_KEY` names/presence-only, **no live calls**, tighten-only (`can_override=False`)
+- **SIx Neural Core** — Darion's SIx interface core ported to pure stdlib: 5-state machine (IDLE/LISTENING/THINKING/RESPONDING/LEARNING) with SIx's legal-transition map, logical ticks, per-state behaviour params, plus SIx's hash-chained audit ledger
+- **Docker fleet catalog** — 29 recommended quantum images from Darion's own `credkellar/` Docker Hub fleet (snapshot Nov 2026)
 
 ### ⛓️ Web3 & Infrastructure
 
@@ -56,7 +62,11 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 5. **BB84 QKD simulation** — Alice and Bob exchange seeded random bits/bases; with `--eve`, an intercept-resend eavesdropper raises the quantum bit error rate (QBER) to ~25%, crossing the 11% threshold — the eavesdropper is detected and the key is aborted.
 6. **QRNG simulation** — bytes are expanded deterministically from SHA-256(seed ‖ counter) and explicitly labelled: *simulation — NOT true quantum randomness*.
 7. **HNDL risk** — `python main.py hndl --shelf-life 10 --migration 4 --crqc 12` applies the Mosca inequality: if shelf-life + migration time > years to a cryptanalytically relevant quantum computer (X + Y > Z), the data is already at risk.
-8. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 30/30`.
+8. **Google Earth layer** — `python main.py earth` lists all 30 HQs by region with coordinates; `python main.py kml --out acd-quantum.kml` exports a Google Earth file with 30 placemarks; `python main.py distance --body-a NIST --body-b ETSI` computes the great-circle distance (Gaithersburg → Sophia Antipolis ≈ 6,734 km).
+9. **Argon 4 DECIDER** — `python main.py decide --algos RSA-2048,AES-256` runs MAP (scan) → MODEL (readiness) → STRESS (negative controls: an attempt to flip RSA-2048 to "safe" and an attempt to raise the score are both rejected) → DECIDE (GO / CONDITIONAL GO / NO-GO + required actions), sealed with a sha256 trace hash. It signs off every migration plan and every HNDL verdict, and it can only ever tighten.
+10. **SIx Neural Core run cycle** — `python main.py six` drives a full run through the core: LISTENING = inventory intake, THINKING = the Argon DECIDE pipeline, RESPONDING = plan/report output, LEARNING = append the run to the hash-chained audit ledger. `python main.py ledger` shows the chain and verifies it — mutate any entry and verification fails.
+11. **Docker image recommendations** — `python main.py images` prints the full fleet catalog; `python main.py recommend --topic QRNG` ranks images per branch/topic (QRNG → quantumrandom-lab first; QKD → quantumrepeater-lab, bellpair-factory; PQC → quantumshor-lab, magicstate-lab); `python main.py compose --topic QKD` prints a ready docker-compose snippet.
+12. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 54/54`.
 
 ### Flowchart — main.py
 
@@ -71,7 +81,23 @@ flowchart TD
     H -->|no| J[Sifted key kept]
     B -->|qrng| K[SHA-256 counter expansion<br/>labelled simulation]
     B -->|hndl| L[Mosca: X + Y > Z ?]
-    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 30/30]
+    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 54/54]
+```
+
+### Flowchart — merged flow (SIx core + Argon 4 + Earth + fleet)
+
+```mermaid
+flowchart LR
+    A[SIx Core: IDLE] --> B[LISTENING<br/>inventory intake]
+    B --> C[THINKING<br/>Argon 4: MAP - MODEL - STRESS - DECIDE]
+    C --> D{DECIDE verdict}
+    D -->|NO-GO / CONDITIONAL| E[Required actions<br/>tighten-only]
+    D -->|GO| F[RESPONDING<br/>plan / report output]
+    E --> F
+    F --> G[LEARNING<br/>hash-chained audit ledger]
+    G --> A
+    C -.-> H[Google Earth layer<br/>30 HQs - KML - distances]
+    F -.-> I[Docker fleet<br/>recommend / compose]
 ```
 
 ## 10 reasons this is cool
@@ -85,7 +111,7 @@ flowchart TD
 7. Honest QRNG: simulated, labelled simulated, never oversold.
 8. The Mosca inequality turns "quantum risk" into one arithmetic check.
 9. Fully deterministic — same seed, same result, byte-for-byte, so tests are exact.
-10. Self-verifying: every demo run ends with `CHECKS 30/30`.
+10. Self-verifying: every demo run ends with `CHECKS 54/54`.
 
 ## 10 problems it solves
 
@@ -99,6 +125,42 @@ flowchart TD
 8. Vendor-locked PQC tooling — zero-dependency stdlib code you can read in one sitting.
 9. Compliance drift against CNSA 2.0 / FIPS 203-205 — statuses map directly to those suites.
 10. Training: new engineers get the map, the threat model and the tools in one repo.
+
+## 🐳 Recommended Quantum Docker Images
+
+Darion's own published quantum fleet on Docker Hub, under `credkellar/` — catalog snapshot **Nov 2026** (fleet verified live 2026-11-17: 37 images, 2,262 pulls; per-image pull counts are not embedded, except superconductor-lab noted as the top fleet puller on that check). ACD-Quantum recommends from this fleet by branch or topic: `python main.py recommend --topic PQC|QKD|QRNG|AGILITY|HNDL`, and `python main.py compose --topic QKD` prints a docker-compose snippet for the top picks.
+
+| Image | Category | Pull |
+|---|---|---|
+| Superconductor-Lab | Hardware simulation | `docker pull credkellar/superconductor-lab:latest` — top fleet puller (150 pulls, Nov 17 check) |
+| QuantumAnnealer-Lab | Optimisation | `docker pull credkellar/quantumannealer-lab:latest` |
+| QuantumSensor-Lab | Sensing | `docker pull credkellar/quantumsensor-lab:latest` |
+| QuantumRandom-Lab | Randomness | `docker pull credkellar/quantumrandom-lab:latest` |
+| QuantumHall-Lab | Condensed matter simulation | `docker pull credkellar/quantumhall-lab:latest` |
+| LevitDock-X | Physics / levitation | `docker pull credkellar/levitdock-x:latest` |
+| NanoBits-Q | Nanotech simulation | `docker pull credkellar/nanobits-q:latest` |
+| MagChip-Q | Quantum hardware | `docker pull credkellar/magchip-q:latest` |
+| QEC-Fortress | Quantum error correction | `docker pull credkellar/qec-fortress:latest` |
+| BellPair-Factory | Entanglement / networking | `docker pull credkellar/bellpair-factory:latest` |
+| TimeCrystal-Q | Condensed matter simulation | `docker pull credkellar/timecrystal-q:latest` |
+| QuantumRepeater-Lab | Entanglement / networking | `docker pull credkellar/quantumrepeater-lab:latest` |
+| TopologicalQubit-Lab | Quantum error correction | `docker pull credkellar/topologicalqubit-lab:latest` |
+| QuantumShor-Lab | Cryptography / security | `docker pull credkellar/quantumshor-lab:latest` |
+| QuantumField-Lab | Field simulation | `docker pull credkellar/quantumfield-lab:latest` |
+| BosonSampling-Lab | Photonic sampling | `docker pull credkellar/bosonsampling-lab:latest` |
+| Wormhole-Lab | Quantum gravity simulation | `docker pull credkellar/wormhole-lab:latest` |
+| GravWave-Lab | Sensing | `docker pull credkellar/gravwave-lab:latest` |
+| AnalogueGravity-Lab | Quantum gravity simulation | `docker pull credkellar/analoguegravity-lab:latest` |
+| QuantumScars-Lab | Many-body simulation | `docker pull credkellar/quantumscars-lab:latest` |
+| MagicState-Lab | Quantum error correction | `docker pull credkellar/magicstate-lab:latest` |
+| Superfluid-Lab | Condensed matter simulation | `docker pull credkellar/superfluid-lab:latest` |
+| KibbleZurek-Lab | Phase transitions | `docker pull credkellar/kibblezurek-lab:latest` |
+| TopologicalInsulator-Lab | Materials simulation | `docker pull credkellar/topologicalinsulator-lab:latest` |
+| QuantumThermodynamics-Lab | Thermodynamics | `docker pull credkellar/quantumthermodynamics-lab:latest` |
+| QuantumTunnel-X | Tunnelling simulation | `docker pull credkellar/quantumtunnel-x:latest` |
+| CasimirX | Quantum vacuum physics | `docker pull credkellar/casimirx:latest` |
+| AcousticLev-Lab | Physics / levitation | `docker pull credkellar/acousticlev-lab:latest` |
+| ACD-Quantum | Cryptography / security | `docker pull credkellar/acd-quantum:latest` |
 
 ## Install — step by step
 
@@ -117,6 +179,15 @@ python3 main.py plan --algos RSA-2048,AES-128
 python3 main.py qkd --eve
 python3 main.py qrng
 python3 main.py hndl --shelf-life 10 --migration 4 --crqc 12
+python3 main.py earth
+python3 main.py kml --out acd-quantum.kml
+python3 main.py distance --body-a NIST --body-b ETSI
+python3 main.py decide --algos RSA-2048,AES-256
+python3 main.py six
+python3 main.py ledger
+python3 main.py images
+python3 main.py recommend --topic QRNG
+python3 main.py compose --topic QKD
 python3 main.py checks
 
 # 4. Run the tests (only dev dependency)
@@ -139,11 +210,11 @@ docker run --rm acd-quantum
 
 ```
 ACD-Quantum/
-├── main.py                  # ONE file: tree data, scanner, readiness, plan, BB84, QRNG, HNDL, checks, CLI
+├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, checks, CLI
 ├── README.md                # This file
 ├── ABOUT.txt                # Exactly-350-character repo About description
 ├── tests/
-│   └── test_main.py         # pytest suite (23 tests)
+│   └── test_main.py         # pytest suite (43 tests)
 ├── assets/
 │   └── cover.png            # Cover image, 2736x912 (official remix of Darion's own art)
 ├── conftest.py              # Puts the repo root on sys.path for pytest imports
