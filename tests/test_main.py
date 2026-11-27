@@ -130,7 +130,7 @@ def test_hndl_mosca_safe():
 def test_run_checks_passes(capsys):
     assert main.run_checks() is True
     out = capsys.readouterr().out
-    assert "CHECKS 105/105" in out
+    assert "CHECKS 123/123" in out
 
 
 # --- Merge 1: Google Earth layer ---
@@ -908,3 +908,112 @@ def test_six_cycle_monad_readiness():
                   if isinstance(e["data"], dict)
                   and e["data"].get("event") == "plan_emitted"]
     assert responding[0]["data"]["chain"]["monad_ready"] is True
+
+
+# --- Merge 9: knowledge layer ---------------------------------------------
+
+def test_knowledge_counts():
+    counts = main.knowledge_counts()
+    assert counts["ai_tools"] == 13 and counts["claude_codes"] == 14
+    assert counts["gemini_codes"] == 80
+    assert counts["prompt_codes_total"] == 94
+    assert counts["glossary_terms"] == 18
+    assert counts["career_layers"] == 15 and counts["cyber_domains"] == 14
+    assert counts["total_entries"] == 154
+
+
+def test_ai_tools_catalog():
+    tools = main.get_ai_tools()
+    assert [t["number"] for t in tools] == list(range(1, 14))
+    assert tools[0]["name"] == "CrowdStrike Charlotte AI"
+    assert tools[12]["name"] == "Guardz"
+    assert len(main.tools_by_category("ENDPOINT SECURITY")) == 3
+    assert main.tools_by_category("pentesting")[0]["name"] == "Pentera"
+
+
+def test_recommend_ai_tool_and_coverage():
+    assert main.recommend_ai_tool("pentesting")[0]["name"] == "Pentera"
+    assert main.recommend_ai_tool("cloud")[0]["name"] == "Wiz"
+    assert main.recommend_ai_tool("identity")[0]["name"] == "Cisco AI Security"
+    gap = main.coverage_gap_check(["ENDPOINT SECURITY", "CLOUD SECURITY"])
+    assert gap["covered_count"] == 2 and gap["total_categories"] == 9
+    assert "PENTESTING" in gap["missing"]
+
+
+def test_claude_codes_and_artifacts_duplication():
+    codes = main.get_claude_codes()
+    assert len(codes) == 14
+    assert main.claude_code("/godmode")["number"] == 1
+    assert len(main.claude_code_all("/artifacts")) == 2
+    assert main.claude_code("artifacts-build")["number"] == 8
+    assert main.claude_code("artifacts-review")["number"] == 10
+
+
+def test_gemini_codes_groups_dupes_and_partial_flags():
+    assert len(main.get_gemini_codes()) == 80
+    assert len(main.GEMINI_GROUPS) == 8
+    assert len(main.gemini_codes_by_group("QUICK ACTIONS")) == 9
+    assert main.gemini_code(80)["name"] == "Quick Reset (Settings)"
+    assert main.gemini_code(80)["code"] == "GEMINI::SYS::RESET.SETTINGS"
+    assert main.gemini_duplicate_codes()["GEMINI::MODE::CODE_INT/ON"] == 2
+    assert all(main.gemini_code(n)["source_partially_visible"]
+               for n in range(61, 72))
+    assert not main.gemini_code(1)["source_partially_visible"]
+
+
+def test_prompt_code_registry_lookup():
+    registry = main.get_prompt_codes()
+    assert len(registry) == 94
+    assert any(h["source"] == "claude" and h["code"] == "/teacher"
+               for h in main.lookup_prompt_code("teacher"))
+    assert any(h["source"] == "gemini"
+               for h in main.lookup_prompt_code("GEMINI::DEBUG::BUGS/FIX"))
+
+
+def test_glossary_define_and_quiz():
+    assert main.define("rag")["term"] == "RAG"
+    assert "Retrieval-Augmented" in main.define("RAG")["definition"]
+    assert main.define("chain of thought")["term"] == "Chain of Thought"
+    assert main.define("bogus term xyz") is None
+    assert main.glossary_quiz(seed=3) == main.glossary_quiz(seed=3)
+    assert main.glossary_quiz(seed=3) != main.glossary_quiz(seed=4)
+
+
+def test_career_stack_and_path_check():
+    stack = main.get_career_stack()
+    assert len(stack) == 15
+    assert stack[0]["name"] == "Security Fundamentals"
+    assert stack[-1]["name"] == "Continuous Learning"
+    assert all(e["credit"] == "@hacktanic" for e in stack)
+    path = main.career_path_check(main.CAREER_STACK[:5])
+    assert path["percent_complete"] == 33.3
+    assert path["next_layer"] == {"layer": 6,
+                                  "name": "Web Application Security"}
+    done = main.career_path_check(main.CAREER_STACK)
+    assert done["percent_complete"] == 100.0 and done["next_layer"] is None
+
+
+def test_cyber_domains_and_tool_mapping():
+    assert len(main.get_cyber_domains()) == 14
+    assert main.CYBER_MISCONCEPTION_LABEL == "Hacking"
+    assert "Hacking" not in main.CYBER_DOMAINS
+    assert "Network Security" in main.domain_for_tool("Darktrace")
+    assert main.domain_for_tool("Pentera") == ["Penetration Testing",
+                                               "Vulnerability Management"]
+    assert set(main.tools_for_domain("Network Security")) == {
+        "Darktrace", "Palo Alto Cortex", "Vectra AI", "Cisco AI Security"}
+    assert main.domains_for_career_layer("Penetration Testing") == [
+        "Penetration Testing"]
+
+
+def test_knowledge_renders_and_voice_routes():
+    assert "TOTAL ENTRIES: 154" in main.render_knowledge()
+    assert "@hacktanic" in main.render_career()
+    assert "@hacktanic" in main.render_cybermap()
+    assert "Pentera" in main.render_aitools()
+    assert "/godmode" in main.render_codes()
+    assert "RAG" in main.render_glossary()
+    assert main.parse_voice_command("ACD ai tools")["mode"] == "aitools"
+    assert main.parse_voice_command("ACD glossary")["mode"] == "glossary"
+    assert main.parse_voice_command("ACD career")["mode"] == "career"
+    assert main.parse_voice_command("ACD knowledge")["mode"] == "knowledge"

@@ -1917,6 +1917,12 @@ WAKE_PHRASES = ("hey acd quantum", "ok acd quantum", "hey acd", "ok acd",
 # Command grammar: (phrases, mode). Longer / more specific phrases first.
 VOICE_GRAMMAR = [
     (("run checks", "run the checks", "self checks", "check yourself"), "checks"),
+    (("ai tools", "security tools", "must have ai tools"), "aitools"),
+    (("prompt codes", "prompt code", "secret codes", "claude codes", "gemini codes", "codes"), "codes"),
+    (("glossary", "define", "what is rag", "ai glossary"), "glossary"),
+    (("career stack", "career path", "career reality", "career"), "career"),
+    (("cyber map", "cybermap", "cybersecurity domains", "what cybersecurity actually is"), "cybermap"),
+    (("knowledge layer", "knowledge", "merge 9", "merge nine"), "knowledge"),
     (("monad tps", "monad throughput", "monad speed"), "monad-tps"),
     (("monad parallel", "parallel execution"), "monad-parallel"),
     (("monad quantum risk", "monad risk"), "monad-risk"),
@@ -3098,7 +3104,718 @@ def render_monad():
 
 
 # --------------------------------------------------------------------------
-# 15. Self-checks
+# 15. Knowledge layer - Merge 9 (catalog / reference models transcribed
+#     from Darion's six infographics - NOT live vendor integrations)
+# --------------------------------------------------------------------------
+
+KNOWLEDGE_HONESTY_NOTE = (
+    "Knowledge layer = offline catalog / reference data transcribed from "
+    "Darion's infographics. ACD-Quantum does NOT call CrowdStrike, "
+    "SentinelOne, Claude, Gemini or any other vendor API live; the prompt "
+    "codes are a reference registry, not commands sent to any model.")
+
+KNOWLEDGE_SOURCES = [
+    "13 Must-Have AI Tools for Cybersecurity (Endpoint, Cloud, SOC, and Pentesting)",
+    "Claude Secret Codes (Simple prompts. Clearer thinking. Bigger results with Claude.)",
+    "80 Secret Codes of Google Gemini",
+    "The Ultimate AI Glossary",
+    "Cybersecurity Career Reality - stack by @hacktanic",
+    "What Cybersecurity Actually Is - pie by @hacktanic",
+]
+
+# --- 15a. 13 must-have AI tools for cybersecurity ---------------------------
+
+AI_TOOLS = [
+    {"number": 1, "name": "CrowdStrike Charlotte AI", "category": "ENDPOINT SECURITY",
+     "description": "AI analyst that triages alerts and executes response actions."},
+    {"number": 2, "name": "SentinelOne Purple AI", "category": "ENDPOINT SECURITY",
+     "description": "Natural-language threat investigation and autonomous EDR/XDR response."},
+    {"number": 3, "name": "Darktrace", "category": "NETWORK SECURITY",
+     "description": "Self-learning anomaly detection across network, email, cloud, and OT."},
+    {"number": 4, "name": "Wiz", "category": "CLOUD SECURITY",
+     "description": "Cloud security posture management with AI workload discovery and risk mapping."},
+    {"number": 5, "name": "Microsoft Security Copilot", "category": "SECURITY OPERATIONS",
+     "description": "AI assistant for incident response and security operations."},
+    {"number": 6, "name": "Palo Alto Cortex", "category": "SECURITY OPERATIONS",
+     "description": "AI-driven XDR and SOC automation across endpoints and cloud."},
+    {"number": 7, "name": "IBM QRadar Advisor", "category": "SIEM / THREAT INTELLIGENCE",
+     "description": "AI-assisted threat prioritization and investigation inside QRadar."},
+    {"number": 8, "name": "Cisco AI Security", "category": "NETWORK & IDENTITY SECURITY",
+     "description": "Identity, network, and endpoint protection with AI-driven detection."},
+    {"number": 9, "name": "Vectra AI", "category": "NETWORK & IDENTITY SECURITY",
+     "description": "AI-powered network detection and response for hybrid environments."},
+    {"number": 10, "name": "Acronis Cyber Protect AI", "category": "DATA PROTECTION",
+     "description": "Integrated backup, disaster recovery, and endpoint security."},
+    {"number": 11, "name": "Cybereason", "category": "ENDPOINT SECURITY",
+     "description": "AI-powered extended detection and response across large-scale data."},
+    {"number": 12, "name": "Pentera", "category": "PENTESTING",
+     "description": "Agentic AI pentesting for continuous security validation."},
+    {"number": 13, "name": "Guardz", "category": "SMALL BUSINESS SECURITY",
+     "description": "AI-powered cybersecurity for small businesses and managed service providers."},
+]
+
+AI_TOOL_TAGLINE = "Endpoint, Cloud, SOC, and Pentesting"
+
+_NEED_TO_TOOLS = {
+    "endpoint": ["CrowdStrike Charlotte AI", "SentinelOne Purple AI", "Cybereason"],
+    "network": ["Darktrace", "Vectra AI", "Cisco AI Security"],
+    "cloud": ["Wiz", "Palo Alto Cortex"],
+    "soc": ["Microsoft Security Copilot", "Palo Alto Cortex"],
+    "pentesting": ["Pentera"],
+    "pentest": ["Pentera"],
+    "siem": ["IBM QRadar Advisor"],
+    "threat intelligence": ["IBM QRadar Advisor"],
+    "data-protection": ["Acronis Cyber Protect AI"],
+    "data protection": ["Acronis Cyber Protect AI"],
+    "backup": ["Acronis Cyber Protect AI"],
+    "small-business": ["Guardz"],
+    "small business": ["Guardz"],
+    "identity": ["Cisco AI Security", "Vectra AI"],
+}
+
+
+def get_ai_tools():
+    """The 13 must-have AI cybersecurity tools (catalog data, no live calls)."""
+    return [dict(t) for t in AI_TOOLS]
+
+
+def _tool_by_name(name):
+    for tool in AI_TOOLS:
+        if tool["name"].lower() == str(name).strip().lower():
+            return tool
+    return None
+
+
+def tools_by_category(category):
+    """Tools whose infographic category matches (case-insensitive)."""
+    wanted = str(category).strip().lower()
+    return [dict(t) for t in AI_TOOLS if t["category"].lower() == wanted]
+
+
+def recommend_ai_tool(need):
+    """Map a plain need (endpoint/network/cloud/soc/...) to catalog tools."""
+    key = str(need).strip().lower()
+    names = _NEED_TO_TOOLS.get(key)
+    if names is None:
+        names = _NEED_TO_TOOLS.get(_normalise(key), [])
+    return [dict(_tool_by_name(n)) for n in names if _tool_by_name(n)]
+
+
+def ai_tool_categories():
+    """The distinct categories covered by the 13-tool catalog."""
+    return sorted({t["category"] for t in AI_TOOLS})
+
+
+def coverage_gap_check(categories_present):
+    """Compare categories an org already covers against the catalog's."""
+    present = {str(c).strip().lower() for c in categories_present}
+    covered = [c for c in ai_tool_categories() if c.lower() in present]
+    missing = [c for c in ai_tool_categories() if c.lower() not in present]
+    total = len(ai_tool_categories())
+    return {"covered": covered, "missing": missing,
+            "covered_count": len(covered), "total_categories": total,
+            "coverage_pct": round(100.0 * len(covered) / total, 1) if total else 0.0,
+            "note": KNOWLEDGE_HONESTY_NOTE}
+
+
+def render_aitools():
+    lines = ["13 MUST-HAVE AI TOOLS FOR CYBERSECURITY",
+             f"Tagline: {AI_TOOL_TAGLINE}",
+             "Catalog / reference data only - no vendor API is called live.", ""]
+    for tool in AI_TOOLS:
+        lines.append(f"{tool['number']:>2}. {tool['name']} [{tool['category']}]")
+        lines.append(f"    {tool['description']}")
+        lines.append(f"    Closest cyber domain(s): "
+                     f"{', '.join(domain_for_tool(tool['name']))}")
+    lines.append("")
+    lines.append(f"note: {KNOWLEDGE_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 15b. Claude secret codes (14) ------------------------------------------
+
+CLAUDE_CODES_TAGLINE = ("Simple prompts. Clearer thinking. "
+                        "Bigger results with Claude.")
+
+CLAUDE_CODES = [
+    {"number": 1, "code": "/godmode", "key": "godmode",
+     "title": "Get Claude's most powerful mode",
+     "description": "Use this to get deeper reasoning, more detailed and high-quality answers.",
+     "example": "/godmode: Create a complete strategy with pros, cons and next steps."},
+    {"number": 2, "code": "/devil", "key": "devil",
+     "title": "Challenge your ideas",
+     "description": "Ask Claude to act as a critical thinker and find weaknesses in your plan.",
+     "example": "/devil: Analyse this idea and point out the flaws."},
+    {"number": 3, "code": "/10x", "key": "10x",
+     "title": "Make it 10x better",
+     "description": "Use this to get a much stronger, clearer and more actionable version of your content.",
+     "example": "/10x: Rewrite this pitch to make it 10x more compelling."},
+    {"number": 4, "code": "/pitch", "key": "pitch",
+     "title": "Create a 30-second pitch",
+     "description": "Get a concise and impactful investor or client pitch.",
+     "example": "/pitch: Create a 30-second investor pitch for my startup."},
+    {"number": 5, "code": "/ghost", "key": "ghost",
+     "title": "Write in a human-like way",
+     "description": "Make the response sound natural, conversational and less AI-like.",
+     "example": "/ghost: Rewrite this in a natural, human and conversational tone."},
+    {"number": 6, "code": "/compare", "key": "compare",
+     "title": "Do a side-by-side analysis",
+     "description": "Compare options, tools or ideas with clear pros and cons.",
+     "example": "/compare: Compare these two tools for content creation in a table."},
+    {"number": 7, "code": "/scout", "key": "scout",
+     "title": "Find risks and blind spots",
+     "description": "Identify potential risks, challenges and things you might be missing.",
+     "example": "/scout: What are the risks and blind spots in this plan?"},
+    {"number": 8, "code": "/artifacts", "key": "artifacts-build",
+     "title": "Build useful apps and tools",
+     "description": "Ask Claude to create interactive tools, templates, dashboards or small apps in chat.",
+     "example": "/artifacts: Create a habit tracker app with a clean UI."},
+    {"number": 9, "code": "/ooda", "key": "ooda",
+     "title": "Solve complex problems",
+     "description": "Use the OODA loop (Observe, Orient, Decide, Act) for better and faster decision-making.",
+     "example": "/ooda: Help me solve this problem using the OODA loop."},
+    {"number": 10, "code": "/artifacts", "key": "artifacts-review",
+     "title": "Improve and find faults",
+     "description": "Analyse your work, find errors and suggest improvements.",
+     "example": "/artifacts: Review this content and find what can be improved."},
+    {"number": 11, "code": "/critique", "key": "critique",
+     "title": "Get detailed feedback",
+     "description": "Ask Claude to review and critique your content, ideas or plans with actionable advice.",
+     "example": "/critique: Review this blog post and suggest improvements."},
+    {"number": 12, "code": "/explainlikeim5", "key": "explainlikeim5",
+     "title": "Get simple explanations",
+     "description": "Use this to explain complex topics in a very simple and easy-to-understand way.",
+     "example": "/explainlikeim5: Explain how blockchain works."},
+    {"number": 13, "code": "/brief", "key": "brief",
+     "title": "Get a short and clear answer",
+     "description": "Get the key points without extra details or fluff.",
+     "example": "/brief: Summarise this article in 5 key points."},
+    {"number": 14, "code": "/teacher", "key": "teacher",
+     "title": "Learn and debate with a mentor",
+     "description": "Ask Claude to act as a teacher, mentor or debate partner to deepen your understanding.",
+     "example": "/teacher: Explain this topic step by step and then ask me questions."},
+]
+
+CLAUDE_CODES_DUPLICATION_NOTE = (
+    "Honest note: the source infographic lists /artifacts twice - #8 "
+    "'Build useful apps and tools' and #10 'Improve and find faults'. "
+    "Both entries are stored, keyed distinctly as artifacts-build and "
+    "artifacts-review.")
+
+
+def get_claude_codes():
+    """The 14 Claude prompt codes, exactly as printed (incl. the dupe)."""
+    return [dict(c) for c in CLAUDE_CODES]
+
+
+def claude_code(name):
+    """One Claude code by key, code text or number; first match or None."""
+    query = str(name).strip().lower().lstrip("/")
+    for entry in CLAUDE_CODES:
+        if query in (entry["key"], entry["code"].lstrip("/"),
+                     str(entry["number"])):
+            return dict(entry)
+    return None
+
+
+def claude_code_all(name):
+    """All Claude entries matching a code text (exposes the /artifacts dupe)."""
+    query = str(name).strip().lower()
+    if not query.startswith("/"):
+        query = "/" + query
+    return [dict(c) for c in CLAUDE_CODES if c["code"] == query]
+
+
+# --- 15c. 80 secret codes of Google Gemini ----------------------------------
+# (number, group, name, code, source_partially_visible)
+
+_GEMINI_RAW = [
+    (1, "SYSTEM OPERATORS", "Set Persona", "GEMINI::SYS::PERSONA:DEVELOPER", False),
+    (2, "SYSTEM OPERATORS", "Set Persona", "GEMINI::SYS::PERSONA:ANALYST", False),
+    (3, "SYSTEM OPERATORS", "Set Persona", "GEMINI::SYS::PERSONA:WRITER", False),
+    (4, "SYSTEM OPERATORS", "Set Persona", "GEMINI::SYS::PERSONA:TEACHER", False),
+    (5, "SYSTEM OPERATORS", "Set Persona", "GEMINI::SYS::PERSONA:DESIGNER", False),
+    (6, "SYSTEM OPERATORS", "Code Interpreter ON", "GEMINI::MODE::CODE_INT/ON", False),
+    (7, "SYSTEM OPERATORS", "Code Interpreter OFF", "GEMINI::MODE::CODE_INT/OFF", False),
+    (8, "FUNCTIONAL TRIGGERS", "Code Interpreter ON", "GEMINI::MODE::CODE_INT/ON", False),
+    (9, "FUNCTIONAL TRIGGERS", "Code Interpreter OFF", "GEMINI::MODE::CODE_INT/OFF", False),
+    (10, "FUNCTIONAL TRIGGERS", "Deep Research", "GEMINI::MODE::RESEARCH/ON", False),
+    (11, "FUNCTIONAL TRIGGERS", "Data Export (CSV)", "GEMINI::MODE::DATA_EXPORT/ON", False),
+    (12, "FUNCTIONAL TRIGGERS", "Web Search", "GEMINI::MODE::SEARCH/ON", False),
+    (13, "FUNCTIONAL TRIGGERS", "Canvas Mode", "GEMINI::MODE::CANVAS/ON", False),
+    (14, "FUNCTIONAL TRIGGERS", "Voice Mode", "GEMINI::MODE::VOICE/ON", False),
+    (15, "DATA HANDLING", "Data Export (CSV)", "GEMINI::DATA::EXPORT.CSV", False),
+    (16, "DATA HANDLING", "Data Export (JSON)", "GEMINI::DATA::EXPORT.JSON", False),
+    (17, "DATA HANDLING", "Data Export (XLSX)", "GEMINI::DATA::EXPORT.XLSX", False),
+    (18, "DATA HANDLING", "Import Table", "GEMINI::DATA::IMPORT.TABLE", False),
+    (19, "DATA HANDLING", "Clean Data", "GEMINI::DATA::CLEAN/AUTO", False),
+    (20, "DATA HANDLING", "Merge Sheets", "GEMINI::DATA::MERGE/SHEETS", False),
+    (21, "DATA HANDLING", "Chart Builder", "GEMINI::DATA::CHART/BUILD", False),
+    (22, "DATA HANDLING", "Data Summary", "GEMINI::DATA::SUMMARY/AUTO", False),
+    (23, "CREATIVE MODIFIERS", "Summarize", "GEMINI::CONTENT::SUMMARIZE/SHORT", False),
+    (24, "CREATIVE MODIFIERS", "Summarize (Long)", "GEMINI::CONTENT::SUMMARIZE/LONG", False),
+    (25, "CREATIVE MODIFIERS", "Rewrite", "GEMINI::CONTENT::REWRITE/CLEAR", False),
+    (26, "CREATIVE MODIFIERS", "Expand", "GEMINI::CONTENT::EXPAND/DETAIL", False),
+    (27, "CREATIVE MODIFIERS", "Shorten", "GEMINI::CONTENT::SHORTEN/50", False),
+    (28, "CREATIVE MODIFIERS", "Change Tone", "GEMINI::CONTENT::TONE/FORMAL", False),
+    (29, "CREATIVE MODIFIERS", "Casual Tone", "GEMINI::CONTENT::TONE/CASUAL", False),
+    (30, "CREATIVE MODIFIERS", "Translate", "GEMINI::CONTENT::TRANSLATE/AUTO", False),
+    (31, "CREATIVE MODIFIERS", "Bullet Points", "GEMINI::CONTENT::FORMAT/BULLETS", False),
+    (32, "CREATIVE MODIFIERS", "Table Format", "GEMINI::CONTENT::FORMAT/TABLE", False),
+    (33, "CREATIVE MODIFIERS", "Headline Ideas", "GEMINI::CONTENT::HEADLINES/10", False),
+    (34, "CREATIVE MODIFIERS", "Hook Writer", "GEMINI::CONTENT::HOOKS/5", False),
+    (35, "CREATIVE MODIFIERS", "Story Mode", "GEMINI::CONTENT::STORY/ON", False),
+    (36, "CREATIVE MODIFIERS", "Script Writer", "GEMINI::CONTENT::SCRIPT/VIDEO", False),
+    (37, "CREATIVE MODIFIERS", "Image Prompt", "GEMINI::GEN::IMG::PROMPT/CREATE", False),
+    (38, "DEBUGGING COMMANDS", "Scan Errors", "GEMINI::DEBUG::SCAN/DEEP", False),
+    (39, "DEBUGGING COMMANDS", "Scan Errors (Quick)", "GEMINI::DEBUG::SCAN/QUICK", False),
+    (40, "DEBUGGING COMMANDS", "Find Bugs", "GEMINI::DEBUG::BUGS/FIND", False),
+    (41, "DEBUGGING COMMANDS", "Fix Bugs", "GEMINI::DEBUG::BUGS/FIX", False),
+    (42, "DEBUGGING COMMANDS", "Trace Stack", "GEMINI::DEBUG::TRACE/STACK", False),
+    (43, "DEBUGGING COMMANDS", "Lint Code", "GEMINI::DEBUG::LINT/AUTO", False),
+    (44, "DEBUGGING COMMANDS", "Test Cases", "GEMINI::DEBUG::TEST/GEN", False),
+    (45, "DEBUGGING COMMANDS", "Explain Error", "GEMINI::DEBUG::EXPLAIN/ERROR", False),
+    (46, "DEBUGGING COMMANDS", "Profile Speed", "GEMINI::DEBUG::PROFILE/SPEED", False),
+    (47, "DEBUGGING COMMANDS", "Memory Check", "GEMINI::DEBUG::MEMORY/CHECK", False),
+    (48, "DEBUGGING COMMANDS", "Log Review", "GEMINI::DEBUG::LOGS/REVIEW", False),
+    (49, "DEBUGGING COMMANDS", "Dependency Scan", "GEMINI::DEBUG::DEPS/SCAN", False),
+    (50, "DEBUGGING COMMANDS", "Security Scan", "GEMINI::DEBUG::SECURITY/SCAN", False),
+    (51, "DEBUGGING COMMANDS", "Refactor", "GEMINI::DEBUG::REFACTOR/CLEAN", False),
+    (52, "DEBUGGING COMMANDS", "Summarize Issue", "GEMINI::DEBUG::SUMMARIZE/SHORT", False),
+    (53, "DEBUGGING COMMANDS", "Rollback Hint", "GEMINI::DEBUG::ROLLBACK/HINT", False),
+    (54, "INTEGRATION & API", "Call Web API", "GEMINI::INT::API/CALL(ENDPOINT)", False),
+    (55, "INTEGRATION & API", "Call Web API (POST)", "GEMINI::INT::API/POST(ENDPOINT)", False),
+    (56, "INTEGRATION & API", "Fetch JSON", "GEMINI::INT::API/FETCH(JSON)", False),
+    (57, "INTEGRATION & API", "Auth Token", "GEMINI::INT::API/AUTH(TOKEN)", False),
+    (58, "INTEGRATION & API", "Webhook Send", "GEMINI::INT::API/WEBHOOK(SEND)", False),
+    (59, "INTEGRATION & API", "Rate Limit Check", "GEMINI::INT::API/LIMIT(CHECK)", False),
+    (60, "INTEGRATION & API", "Generate Image", "GEMINI::INT::API/IMG(CALL)", False),
+    (61, "API CALLS", "Call Web API", "GEMINI::INT::API/CALL/API", True),
+    (62, "API CALLS", "Call Web API", "GEMINI::INT::API/CALL(ENDPOINT)", True),
+    (63, "API CALLS", "Generate API", "GEMINI::INT::API/GEN(SPEC)", True),
+    (64, "API CALLS", "Call Web API (GET)", "GEMINI::INT::API/GET(ENDPOINT)", True),
+    (65, "API CALLS", "Call Web API (PUT)", "GEMINI::INT::API/PUT(ENDPOINT)", True),
+    (66, "API CALLS", "Generate Image", "GEMINI::GEN::IMG(ENDPOINT)", True),
+    (67, "API CALLS", "Generate Image", "GEMINI::GEN::IMG::PROMPT=...", True),
+    (68, "API CALLS", "Generate Image (Style)", "GEMINI::GEN::IMG::STYLE=...", True),
+    (69, "API CALLS", "Generate Image (Size)", "GEMINI::GEN::IMG::SIZE=...", True),
+    (70, "API CALLS", "Generate Image (Seed)", "GEMINI::GEN::IMG::SEED=...", True),
+    (71, "API CALLS", "Generate Image (Batch)", "GEMINI::GEN::IMG::BATCH=...", True),
+    (72, "QUICK ACTIONS", "Quick Reset", "GEMINI::SYS::RESET.ALL", False),
+    (73, "QUICK ACTIONS", "Quick Reset (Chat)", "GEMINI::SYS::RESET.CHAT", False),
+    (74, "QUICK ACTIONS", "Quick Reset (Memory)", "GEMINI::SYS::RESET.MEMORY", False),
+    (75, "QUICK ACTIONS", "Quick Reset (Persona)", "GEMINI::SYS::RESET.PERSONA", False),
+    (76, "QUICK ACTIONS", "Quick Reset (Mode)", "GEMINI::SYS::RESET.MODE", False),
+    (77, "QUICK ACTIONS", "Quick Undo", "GEMINI::SYS::UNDO/LAST", False),
+    (78, "QUICK ACTIONS", "Quick Redo", "GEMINI::SYS::REDO/LAST", False),
+    (79, "QUICK ACTIONS", "Quick Save", "GEMINI::SYS::SAVE/CHAT", False),
+    (80, "QUICK ACTIONS", "Quick Reset (Settings)", "GEMINI::SYS::RESET.SETTINGS", False),
+]
+
+GEMINI_CODES = [{"number": n, "group": g, "name": name, "code": code,
+                 "source_partially_visible": partial}
+                for n, g, name, code, partial in _GEMINI_RAW]
+
+GEMINI_GROUPS = ["SYSTEM OPERATORS", "FUNCTIONAL TRIGGERS", "DATA HANDLING",
+                 "CREATIVE MODIFIERS", "DEBUGGING COMMANDS",
+                 "INTEGRATION & API", "API CALLS", "QUICK ACTIONS"]
+
+GEMINI_DUPLICATION_NOTE = (
+    "Honest note: the source prints Code Interpreter ON/OFF twice - as "
+    "SYSTEM OPERATORS #6/#7 and again as FUNCTIONAL TRIGGERS #8/#9 - and "
+    "several API / image codes repeat across groups. All 80 numbered "
+    "entries are kept exactly as printed. Entries #61-#71 are partially "
+    "cut off in the source photo and are flagged "
+    "source_partially_visible=True (best-effort transcription).")
+
+
+def get_gemini_codes():
+    """All 80 Gemini codes, numbered as printed (duplicates kept)."""
+    return [dict(c) for c in GEMINI_CODES]
+
+
+def gemini_codes_by_group(group):
+    """Gemini codes in one group (case-insensitive group name)."""
+    wanted = str(group).strip().lower()
+    return [dict(c) for c in GEMINI_CODES if c["group"].lower() == wanted]
+
+
+def gemini_code(number):
+    """One Gemini entry by its printed number (1-80), or None."""
+    try:
+        wanted = int(number)
+    except (TypeError, ValueError):
+        return None
+    for entry in GEMINI_CODES:
+        if entry["number"] == wanted:
+            return dict(entry)
+    return None
+
+
+def gemini_duplicate_codes():
+    """Code strings that appear more than once in the 80 (honesty check)."""
+    counts = {}
+    for entry in GEMINI_CODES:
+        counts[entry["code"]] = counts.get(entry["code"], 0) + 1
+    return {code: n for code, n in counts.items() if n > 1}
+
+
+# --- Combined prompt-code registry: Claude 14 + Gemini 80 = 94 --------------
+
+def get_prompt_codes():
+    """Unified registry: every Claude code and every Gemini code."""
+    registry = []
+    for entry in CLAUDE_CODES:
+        registry.append({"source": "claude", "number": entry["number"],
+                         "code": entry["code"], "key": entry["key"],
+                         "name": entry["title"],
+                         "description": entry["description"],
+                         "example": entry["example"]})
+    for entry in GEMINI_CODES:
+        registry.append({"source": "gemini", "number": entry["number"],
+                         "code": entry["code"], "key": None,
+                         "name": entry["name"], "group": entry["group"],
+                         "description": f"Gemini {entry['group'].title()} code.",
+                         "source_partially_visible":
+                             entry["source_partially_visible"]})
+    return registry
+
+
+def lookup_prompt_code(query):
+    """Search both registries by code text, name or keyword substring."""
+    needle = str(query).strip().lower()
+    if not needle:
+        return []
+    hits = []
+    for entry in get_prompt_codes():
+        haystack = " ".join(str(entry.get(k, "")) for k in
+                            ("code", "name", "description", "group",
+                             "key")).lower()
+        if needle in haystack:
+            hits.append(entry)
+    return hits
+
+
+def render_codes():
+    lines = ["PROMPT SECRET CODES - CLAUDE 14 + GEMINI 80 = 94",
+             f"Claude tagline: {CLAUDE_CODES_TAGLINE}",
+             "Reference registry only - no code is sent to any live model.",
+             "", "CLAUDE SECRET CODES (14):"]
+    for entry in CLAUDE_CODES:
+        lines.append(f"{entry['number']:>2}. {entry['code']} "
+                     f"[{entry['key']}] - {entry['title']}")
+        lines.append(f"    {entry['description']}")
+        lines.append(f"    Example: {entry['example']}")
+    lines.append(CLAUDE_CODES_DUPLICATION_NOTE)
+    lines.append("")
+    lines.append("80 SECRET CODES OF GOOGLE GEMINI (syntax GEMINI::<SECTION>::<CODE>):")
+    for group in GEMINI_GROUPS:
+        lines.append(f"  {group}:")
+        for entry in gemini_codes_by_group(group):
+            flag = " (source partially visible)" \
+                if entry["source_partially_visible"] else ""
+            lines.append(f"  {entry['number']:>2}. {entry['name']}: "
+                         f"{entry['code']}{flag}")
+    lines.append(GEMINI_DUPLICATION_NOTE)
+    lines.append("")
+    lines.append(f"note: {KNOWLEDGE_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 15d. The Ultimate AI Glossary (18 terms) -------------------------------
+
+AI_GLOSSARY = [
+    {"term": "Artificial Intelligence",
+     "definition": "Software that performs tasks that normally require human intelligence, such as understanding language, recognising patterns and making decisions."},
+    {"term": "Machine Learning",
+     "definition": "A branch of AI where systems learn patterns from data instead of being explicitly programmed for every rule."},
+    {"term": "Deep Learning",
+     "definition": "Machine learning using large multi-layered neural networks that learn increasingly abstract features from data."},
+    {"term": "Generative AI",
+     "definition": "AI that creates new content - text, images, audio or code - by modelling the patterns in its training data."},
+    {"term": "Foundation Model",
+     "definition": "A large model trained on broad data that can be adapted to many different downstream tasks."},
+    {"term": "LLM Model",
+     "definition": "A deployed large language model - the trained network itself, as distinct from the application wrapped around it (listed separately from 'LLM' in the source)."},
+    {"term": "Training vs Inference",
+     "definition": "Training is the learning phase that fits a model's parameters to data; inference is using the trained model to produce outputs."},
+    {"term": "LLM",
+     "definition": "Large Language Model - a neural network with billions of parameters trained on huge text corpora to understand and generate language."},
+    {"term": "Prompt Engineering",
+     "definition": "Designing the input text given to a model to reliably get the desired output."},
+    {"term": "Context Engineering",
+     "definition": "Designing everything the model sees - instructions, retrieved facts, conversation history and tools - not just the single prompt."},
+    {"term": "Transformer",
+     "definition": "The neural-network architecture behind modern LLMs, built on attention, which weighs how each token relates to the others."},
+    {"term": "Parameters",
+     "definition": "The learned numeric weights of a model; their count is a rough measure of model size and capacity."},
+    {"term": "Reasoning Model",
+     "definition": "A model trained to work through problems step by step before answering, trading more compute for better answers on hard tasks."},
+    {"term": "Chain of Thought",
+     "definition": "Prompting or training a model to spell out intermediate reasoning steps before giving its final answer."},
+    {"term": "Hallucination",
+     "definition": "When a model generates confident-sounding content that is false or unsupported by its inputs."},
+    {"term": "Grounding",
+     "definition": "Anchoring a model's output in verified sources or retrieved facts so its answers can be checked."},
+    {"term": "RAG",
+     "definition": "Retrieval-Augmented Generation - the model retrieves relevant documents first, then generates an answer using them as context."},
+    {"term": "Embeddings",
+     "definition": "Numeric vector representations of text or other data that place similar meanings close together, enabling search and matching."},
+]
+
+
+def get_glossary():
+    """The 18-term Ultimate AI Glossary."""
+    return [dict(g) for g in AI_GLOSSARY]
+
+
+def define(term):
+    """Look up one glossary term (normalised / fuzzy); dict or None."""
+    key = _normalise(term)
+    for entry in AI_GLOSSARY:
+        if _normalise(entry["term"]) == key:
+            return dict(entry)
+    for entry in AI_GLOSSARY:
+        norm = _normalise(entry["term"])
+        if key and (key in norm or norm in key):
+            return dict(entry)
+    return None
+
+
+def glossary_quiz(seed=42, count=5):
+    """Deterministic offline quiz: seeded sample of Q/A pairs."""
+    rng = random.Random(seed)
+    pool = list(AI_GLOSSARY)
+    rng.shuffle(pool)
+    picked = pool[:max(1, min(count, len(pool)))]
+    return {"seed": seed,
+            "questions": [{"term": e["term"],
+                           "question": f"What is {e['term']}?",
+                           "answer": e["definition"]} for e in picked],
+            "note": "Deterministic offline quiz - same seed, same questions."}
+
+
+def render_glossary():
+    lines = ["THE ULTIMATE AI GLOSSARY (18 terms)", ""]
+    for entry in AI_GLOSSARY:
+        lines.append(f"{entry['term']}: {entry['definition']}")
+    lines.append("")
+    lines.append(f"note: {KNOWLEDGE_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 15e. Cybersecurity Career Reality stack (@hacktanic) -------------------
+
+CAREER_STACK_CREDIT = "@hacktanic"
+
+CAREER_STACK = [
+    "Security Fundamentals",
+    "Networking & Protocols",
+    "Linux & System Security",
+    "Programming & Scripting",
+    "Cryptography",
+    "Web Application Security",
+    "Vulnerability Assessment",
+    "Penetration Testing",
+    "Incident Response",
+    "SOC & Threat Monitoring",
+    "Cloud Security",
+    "Threat Intelligence",
+    "Governance, Risk & Compliance",
+    "Security Awareness",
+    "Continuous Learning",
+]
+
+
+def get_career_stack():
+    """The 15-layer career stack, top (layer 1) to bottom (layer 15)."""
+    return [{"layer": i + 1, "name": name, "credit": CAREER_STACK_CREDIT}
+            for i, name in enumerate(CAREER_STACK)]
+
+
+def career_path_check(completed_layers):
+    """Progress through the stack: % complete + the next layer to learn."""
+    done = {str(x).strip().lower() for x in completed_layers}
+    completed = [name for name in CAREER_STACK if name.lower() in done]
+    remaining = [name for name in CAREER_STACK if name.lower() not in done]
+    total = len(CAREER_STACK)
+    return {"completed": completed, "completed_count": len(completed),
+            "total_layers": total,
+            "percent_complete": round(100.0 * len(completed) / total, 1),
+            "next_layer": ({"layer": CAREER_STACK.index(remaining[0]) + 1,
+                            "name": remaining[0]} if remaining else None),
+            "remaining": remaining, "credit": CAREER_STACK_CREDIT}
+
+
+def render_career():
+    lines = ["CYBERSECURITY CAREER REALITY - the stack, top to bottom",
+             f"Credit: {CAREER_STACK_CREDIT}", ""]
+    for entry in get_career_stack():
+        lines.append(f"{entry['layer']:>2}. {entry['name']}")
+    lines.append("")
+    lines.append(f"note: {KNOWLEDGE_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 15f. What cybersecurity actually is (@hacktanic) ------------------------
+
+CYBER_MAP_CREDIT = "@hacktanic"
+CYBER_MISCONCEPTION_LABEL = "Hacking"
+
+CYBER_DOMAINS = [
+    "Threat Intelligence",
+    "Malware Analysis",
+    "Incident Response",
+    "Network Security",
+    "Cloud Security",
+    "Application Security",
+    "Vulnerability Management",
+    "Identity & Access Management",
+    "Governance, Risk & Compliance",
+    "Security Awareness",
+    "SOC Operations",
+    "Digital Forensics",
+    "Penetration Testing",
+    "Security Architecture",
+]
+
+_TOOL_TO_DOMAINS = {
+    "CrowdStrike Charlotte AI": ["SOC Operations", "Incident Response"],
+    "SentinelOne Purple AI": ["SOC Operations", "Digital Forensics"],
+    "Darktrace": ["Network Security", "Threat Intelligence"],
+    "Wiz": ["Cloud Security", "Vulnerability Management"],
+    "Microsoft Security Copilot": ["SOC Operations", "Incident Response"],
+    "Palo Alto Cortex": ["SOC Operations", "Network Security"],
+    "IBM QRadar Advisor": ["Threat Intelligence", "SOC Operations"],
+    "Cisco AI Security": ["Identity & Access Management", "Network Security"],
+    "Vectra AI": ["Network Security", "Threat Intelligence"],
+    "Acronis Cyber Protect AI": ["Incident Response", "Digital Forensics"],
+    "Cybereason": ["SOC Operations", "Malware Analysis"],
+    "Pentera": ["Penetration Testing", "Vulnerability Management"],
+    "Guardz": ["Security Awareness", "Governance, Risk & Compliance"],
+}
+
+_LAYER_TO_DOMAINS = {
+    "Security Fundamentals": ["Security Architecture"],
+    "Networking & Protocols": ["Network Security"],
+    "Linux & System Security": ["Security Architecture"],
+    "Programming & Scripting": ["Application Security"],
+    "Cryptography": ["Identity & Access Management"],
+    "Web Application Security": ["Application Security"],
+    "Vulnerability Assessment": ["Vulnerability Management"],
+    "Penetration Testing": ["Penetration Testing"],
+    "Incident Response": ["Incident Response"],
+    "SOC & Threat Monitoring": ["SOC Operations"],
+    "Cloud Security": ["Cloud Security"],
+    "Threat Intelligence": ["Threat Intelligence"],
+    "Governance, Risk & Compliance": ["Governance, Risk & Compliance"],
+    "Security Awareness": ["Security Awareness"],
+    "Continuous Learning": ["Malware Analysis", "Digital Forensics"],
+}
+
+
+def get_cyber_domains():
+    """The 14 real domains of cybersecurity (pie by @hacktanic)."""
+    return [{"domain": name, "credit": CYBER_MAP_CREDIT}
+            for name in CYBER_DOMAINS]
+
+
+def domain_for_tool(tool_name):
+    """Closest cyber domain(s) for one of the 13 catalog AI tools."""
+    tool = _tool_by_name(tool_name)
+    if tool is None:
+        return []
+    return list(_TOOL_TO_DOMAINS.get(tool["name"], []))
+
+
+def tools_for_domain(domain):
+    """Catalog AI tools mapped to one cyber domain."""
+    wanted = str(domain).strip().lower()
+    return [name for name, domains in _TOOL_TO_DOMAINS.items()
+            if any(d.lower() == wanted for d in domains)]
+
+
+def domains_for_career_layer(layer_name):
+    """Cyber domain(s) a career-stack layer feeds into, where natural."""
+    for name, domains in _LAYER_TO_DOMAINS.items():
+        if name.lower() == str(layer_name).strip().lower():
+            return list(domains)
+    return []
+
+
+def render_cybermap():
+    lines = ["WHAT CYBERSECURITY ACTUALLY IS",
+             f"Credit: {CYBER_MAP_CREDIT}",
+             f"Popular misconception (the umbrella label): "
+             f"{CYBER_MISCONCEPTION_LABEL} - the field is really these "
+             f"{len(CYBER_DOMAINS)} domains:", ""]
+    for name in CYBER_DOMAINS:
+        tools = tools_for_domain(name)
+        suffix = f" - tools: {', '.join(tools)}" if tools else ""
+        lines.append(f"  - {name}{suffix}")
+    lines.append("")
+    lines.append("AI tool -> domain cross-reference:")
+    for tool in AI_TOOLS:
+        lines.append(f"  {tool['name']}: "
+                     f"{', '.join(domain_for_tool(tool['name']))}")
+    lines.append("")
+    lines.append(f"note: {KNOWLEDGE_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 15g. Unified Merge 9 surface --------------------------------------------
+
+def knowledge_counts():
+    """Entry counts for the whole Merge 9 knowledge layer."""
+    counts = {"ai_tools": len(AI_TOOLS),
+              "claude_codes": len(CLAUDE_CODES),
+              "gemini_codes": len(GEMINI_CODES),
+              "prompt_codes_total": len(get_prompt_codes()),
+              "glossary_terms": len(AI_GLOSSARY),
+              "career_layers": len(CAREER_STACK),
+              "cyber_domains": len(CYBER_DOMAINS)}
+    counts["total_entries"] = (counts["ai_tools"] + counts["claude_codes"]
+                               + counts["gemini_codes"]
+                               + counts["glossary_terms"]
+                               + counts["career_layers"]
+                               + counts["cyber_domains"])
+    return counts
+
+
+def render_knowledge():
+    counts = knowledge_counts()
+    lines = ["MERGE 9 - KNOWLEDGE LAYER (six infographics, one catalog)",
+             f"note: {KNOWLEDGE_HONESTY_NOTE}", "", "Sources:"]
+    for source in KNOWLEDGE_SOURCES:
+        lines.append(f"  - {source}")
+    lines += ["", "Counts:",
+              f"  AI security tools: {counts['ai_tools']}",
+              f"  Claude prompt codes: {counts['claude_codes']}",
+              f"  Gemini prompt codes: {counts['gemini_codes']}",
+              f"  Total prompt codes: {counts['prompt_codes_total']}",
+              f"  Glossary terms: {counts['glossary_terms']}",
+              f"  Career layers: {counts['career_layers']} "
+              f"(credit {CAREER_STACK_CREDIT})",
+              f"  Cyber domains: {counts['cyber_domains']} "
+              f"(credit {CYBER_MAP_CREDIT})",
+              f"  TOTAL ENTRIES: {counts['total_entries']}",
+              "", "Cross-reference - AI tool -> cyber domain(s):"]
+    for tool in AI_TOOLS:
+        lines.append(f"  {tool['name']}: "
+                     f"{', '.join(domain_for_tool(tool['name']))}")
+    lines.append("")
+    lines.append("Cross-reference - cyber domain -> AI tool(s):")
+    for name in CYBER_DOMAINS:
+        tools = tools_for_domain(name)
+        lines.append(f"  {name}: {', '.join(tools) if tools else '(none)'}")
+    lines.append("")
+    lines.append(CLAUDE_CODES_DUPLICATION_NOTE)
+    lines.append(GEMINI_DUPLICATION_NOTE)
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------
+# 16. Self-checks
 # --------------------------------------------------------------------------
 
 def _raises_value_error(fn):
@@ -3463,6 +4180,94 @@ def run_checks():
                    and e["data"].get("state") == "RESPONDING")
           ["data"]["chain"]["monad_ready"] is True)
 
+    # Merge 9 - knowledge layer (six infographics, 154 entries)
+    _counts = knowledge_counts()
+    check("knowledge counts: 13/14/80/94/18/15/14/154",
+          _counts["ai_tools"] == 13 and _counts["claude_codes"] == 14
+          and _counts["gemini_codes"] == 80
+          and _counts["prompt_codes_total"] == 94
+          and _counts["glossary_terms"] == 18
+          and _counts["career_layers"] == 15
+          and _counts["cyber_domains"] == 14
+          and _counts["total_entries"] == 154)
+    check("AI tools numbered 1..13 as printed",
+          [t["number"] for t in get_ai_tools()] == list(range(1, 14)))
+    check("AI tool category coverage: endpoint x3, pentesting = Pentera",
+          len(tools_by_category("ENDPOINT SECURITY")) == 3
+          and tools_by_category("pentesting")[0]["name"] == "Pentera")
+    check("recommend_ai_tool: pentesting -> Pentera, cloud -> Wiz first",
+          recommend_ai_tool("pentesting")[0]["name"] == "Pentera"
+          and recommend_ai_tool("cloud")[0]["name"] == "Wiz")
+    _gap = coverage_gap_check(["ENDPOINT SECURITY", "CLOUD SECURITY"])
+    check("coverage gap check math (2 of 9 categories)",
+          _gap["covered_count"] == 2 and _gap["total_categories"] == 9
+          and "PENTESTING" in _gap["missing"])
+    check("Claude /artifacts duplicated honestly (build + review keys)",
+          len(claude_code_all("/artifacts")) == 2
+          and claude_code("artifacts-build")["number"] == 8
+          and claude_code("artifacts-review")["number"] == 10
+          and "twice" in CLAUDE_CODES_DUPLICATION_NOTE)
+    check("Gemini dupes flagged: CODE_INT/ON appears at #6 and #8",
+          gemini_duplicate_codes().get("GEMINI::MODE::CODE_INT/ON") == 2
+          and gemini_code(6)["code"] == gemini_code(8)["code"])
+    check("gemini_code(80) is Quick Reset (Settings)",
+          gemini_code(80)["name"] == "Quick Reset (Settings)"
+          and gemini_code(80)["code"] == "GEMINI::SYS::RESET.SETTINGS")
+    check("Gemini groups: 8 groups, partially-visible flags on 61-71 only",
+          len(GEMINI_GROUPS) == 8
+          and all(gemini_code(n)["source_partially_visible"]
+                  for n in range(61, 72))
+          and not gemini_code(60)["source_partially_visible"]
+          and not gemini_code(72)["source_partially_visible"])
+    check("prompt registry merges Claude 14 + Gemini 80 = 94, lookup works",
+          len(get_prompt_codes()) == 94
+          and any(h["source"] == "claude" and h["code"] == "/godmode"
+                  for h in lookup_prompt_code("godmode"))
+          and any(h["source"] == "gemini"
+                  for h in lookup_prompt_code("RESET.SETTINGS")))
+    check("define('rag') and define('Chain of Thought') resolve",
+          define("rag")["term"] == "RAG"
+          and "Retrieval-Augmented" in define("rag")["definition"]
+          and define("Chain of Thought")["term"] == "Chain of Thought"
+          and define("not a real term") is None)
+    check("glossary quiz is deterministic for a seed",
+          glossary_quiz(seed=7) == glossary_quiz(seed=7)
+          and glossary_quiz(seed=7) != glossary_quiz(seed=8)
+          and len(glossary_quiz(seed=7)["questions"]) == 5)
+    _path = career_path_check(CAREER_STACK[:5])
+    check("career_path_check math: 5/15 done -> 33.3%, next layer 6",
+          _path["completed_count"] == 5 and _path["percent_complete"] == 33.3
+          and _path["next_layer"]["layer"] == 6
+          and _path["next_layer"]["name"] == "Web Application Security")
+    check("career stack credits @hacktanic, 15 layers in printed order",
+          get_career_stack()[0]["name"] == "Security Fundamentals"
+          and get_career_stack()[-1]["name"] == "Continuous Learning"
+          and all(e["credit"] == "@hacktanic" for e in get_career_stack()))
+    check("domain_for_tool: Darktrace -> Network Security, Pentera -> Pen Testing",
+          "Network Security" in domain_for_tool("Darktrace")
+          and domain_for_tool("Pentera") == ["Penetration Testing",
+                                             "Vulnerability Management"]
+          and domain_for_tool("No Such Tool") == [])
+    check("cyber domains: 14 real domains, 'Hacking' is only the misconception",
+          len(get_cyber_domains()) == 14
+          and CYBER_MISCONCEPTION_LABEL == "Hacking"
+          and "Hacking" not in CYBER_DOMAINS
+          and set(tools_for_domain("Network Security"))
+          == {"Darktrace", "Palo Alto Cortex", "Vectra AI",
+              "Cisco AI Security"})
+    check("knowledge renders carry counts, credits and honesty note",
+          "TOTAL ENTRIES: 154" in render_knowledge()
+          and "@hacktanic" in render_career()
+          and "@hacktanic" in render_cybermap()
+          and "no vendor API is called live" in render_aitools()
+          and "94" in render_codes())
+    check("voice grammar routes knowledge phrases to the new modes",
+          parse_voice_command("ACD ai tools")["mode"] == "aitools"
+          and parse_voice_command("ACD glossary")["mode"] == "glossary"
+          and parse_voice_command("ACD career")["mode"] == "career"
+          and parse_voice_command("ACD prompt codes")["mode"] == "codes"
+          and parse_voice_command("ACD knowledge")["mode"] == "knowledge")
+
 
     passed = sum(1 for _, ok in checks if ok)
     for name, ok in checks:
@@ -3537,6 +4342,15 @@ def demo():
           f"parallel speedup x{_mon_par['speedup']}, "
           f"EOA quantum risk {monad_account_risk(MONAD_SAMPLE_EOA)['risk_rating']} "
           f"(offline model - no live RPC)")
+    _know = knowledge_counts()
+    print(f"Knowledge layer (Merge 9): {_know['ai_tools']} AI security tools, "
+          f"{_know['prompt_codes_total']} prompt codes "
+          f"({_know['claude_codes']} Claude + {_know['gemini_codes']} Gemini), "
+          f"{_know['glossary_terms']} glossary terms, "
+          f"{_know['career_layers']} career layers, "
+          f"{_know['cyber_domains']} cyber domains = "
+          f"{_know['total_entries']} entries "
+          f"(catalog only - no live vendor calls)")
     print()
     return run_checks()
 
@@ -3549,7 +4363,9 @@ def main(argv=None):
                                  "images", "recommend", "compose", "streetview", "map",
                                  "voice", "speaker", "audio", "bluetooth", "camera",
                                  "monad", "monad-tps", "monad-parallel",
-                                 "monad-risk", "monad-plan"])
+                                 "monad-risk", "monad-plan",
+                                 "aitools", "codes", "glossary", "career",
+                                 "cybermap", "knowledge"])
     parser.add_argument("body_arg", nargs="?", default=None,
                         help="Optional body name (streetview) or transcript (voice)")
     parser.add_argument("--scope", default="all", choices=["all", "national", "international"])
@@ -3929,6 +4745,31 @@ def main(argv=None):
             print(f"Phase {step['phase']} - {step['name']}")
             print(f"  - {step['action']}")
         print(f"note: {MONAD_HONESTY_NOTE}")
+        return 0
+    if args.mode == "aitools":
+        print(render_aitools(), end="")
+        return 0
+    if args.mode == "codes":
+        print(render_codes(), end="")
+        return 0
+    if args.mode == "glossary":
+        if args.body_arg:
+            entry = define(args.body_arg)
+            if entry is None:
+                print(f"error: unknown glossary term: {args.body_arg}")
+                return 1
+            print(f"{entry['term']}: {entry['definition']}")
+            return 0
+        print(render_glossary(), end="")
+        return 0
+    if args.mode == "career":
+        print(render_career(), end="")
+        return 0
+    if args.mode == "cybermap":
+        print(render_cybermap(), end="")
+        return 0
+    if args.mode == "knowledge":
+        print(render_knowledge(), end="")
         return 0
     return 0 if demo() else 1
 
