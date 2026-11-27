@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>ACD-Quantum - Quantum Cyber Security Bodies</name>
+<Placemark>
+<name>White House / ONCD</name>
+<description>Policy / Command (national) - NSM-10 (2022) sets US policy and the 2035 mitigation goal. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0365,38.8977,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>OMB</name>
+<description>Policy / Command (national) - Binding federal migration memoranda; agencies must inventory cryptography. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.037,38.897,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>NQCO</name>
+<description>Policy / Command (national) - National Quantum Coordination Office; coordinates federal quantum work. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0363,38.8951,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>NIST</name>
+<description>Standards (national) - FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH-DSA, plus HQC selected. HQ: Gaithersburg, MD, USA.</description>
+<Point><coordinates>-77.2013,39.1434,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>NSA</name>
+<description>Standards (national) - CNSA 2.0 suite for National Security Systems; National Manager for NSS. HQ: Fort Meade, MD, USA.</description>
+<Point><coordinates>-76.7713,39.1089,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>NCCoE</name>
+<description>Standards (national) - NIST National Cybersecurity Center of Excellence; PQC migration practice guides. HQ: Rockville, MD, USA.</description>
+<Point><coordinates>-77.1528,39.084,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>CISA</name>
+<description>Defense / Enforcement (national) - Leads PQC migration guidance for critical infrastructure. HQ: Arlington, VA, USA.</description>
+<Point><coordinates>-77.1109,38.8816,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>DHS</name>
+<description>Defense / Enforcement (national) - Department-wide post-quantum transition preparation. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0369,38.9072,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>DoD / DISA</name>
+<description>Defense / Enforcement (national) - Military systems, identity cards and platforms move to CNSA 2.0. HQ: Arlington, VA (Pentagon), USA.</description>
+<Point><coordinates>-77.0563,38.8719,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>FBI / Intelligence Community</name>
+<description>Defense / Enforcement (national) - Quantum threat intelligence and counter-intelligence. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.025,38.8951,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>U.S. Department of the Treasury</name>
+<description>Sectors / Oversight (national) - Financial-services sector risk management for quantum threats. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0348,38.8978,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>DOE / National Labs</name>
+<description>Sectors / Oversight (national) - Energy sector and national-lab QKD / quantum networking testbeds. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0261,38.8869,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>GSA / FedRAMP</name>
+<description>Sectors / Oversight (national) - Federal procurement and cloud authorisation require PQC readiness. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.043,38.897,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>GAO</name>
+<description>Sectors / Oversight (national) - Government Accountability Office; oversight of strategy and migration cost. HQ: Washington, DC, USA.</description>
+<Point><coordinates>-77.0222,38.9008,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>US Industry Leaders</name>
+<description>Industry (national) - Microsoft, Google, IBM, Cisco, Cloudflare, SandboxAQ, QuSecure, Entrust, Keyfactor, DigiCert. HQ: Silicon Valley, CA (anchor), USA. Anchor location.</description>
+<Point><coordinates>-122.0575,37.3875,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>ISO/IEC JTC 1 SC 27</name>
+<description>Global Standards (international) - International cryptographic standards; ISO/IEC 23837 QKD evaluation. HQ: Geneva, Switzerland.</description>
+<Point><coordinates>6.1432,46.2044,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>ITU-T SG17 / SG13</name>
+<description>Global Standards (international) - UN telecom security: X.1710 QKD security framework, Y.3800 QKD networks. HQ: Geneva, Switzerland.</description>
+<Point><coordinates>6.1405,46.2265,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>IETF</name>
+<description>Global Standards (international) - Embeds PQC into TLS, IKEv2, SSH and X.509 / CMS protocols. HQ: Reston, VA (anchor - IETF is virtual), USA. Anchor location.</description>
+<Point><coordinates>-77.357,38.9586,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>ETSI</name>
+<description>Global Standards (international) - Europe: TR 103 619 migration strategies, TS 103 744 hybrid key exchange. HQ: Sophia Antipolis, France.</description>
+<Point><coordinates>7.075,43.617,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>IEEE</name>
+<description>Global Standards (international) - Quantum computing and QKD standardisation work. HQ: New York, NY, USA.</description>
+<Point><coordinates>-74.006,40.7128,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>ENISA / EU Commission</name>
+<description>Regional Authorities (international) - EU coordinated implementation roadmap for PQC transition. HQ: Athens (ENISA) / Brussels (EU Commission), Greece / Belgium.</description>
+<Point><coordinates>23.7275,37.9838,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>UK NCSC</name>
+<description>Regional Authorities (international) - UK National Cyber Security Centre PQC migration guidance and timelines. HQ: London, United Kingdom.</description>
+<Point><coordinates>-0.1278,51.5074,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>Germany BSI</name>
+<description>Regional Authorities (international) - TR-02102 cryptographic recommendations, hybrid PQC guidance. HQ: Bonn, Germany.</description>
+<Point><coordinates>7.0982,50.7374,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>France ANSSI</name>
+<description>Regional Authorities (international) - Early hybrid-PQC position papers and national guidance. HQ: Paris, France.</description>
+<Point><coordinates>2.3522,48.8566,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>Canada CCCS / CSE</name>
+<description>Regional Authorities (international) - ITSM.40.001 roadmap for Government of Canada PQC migration. HQ: Ottawa, Canada.</description>
+<Point><coordinates>-75.6972,45.4215,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>Australia ASD / ACSC</name>
+<description>Regional Authorities (international) - Planning guidance for post-quantum cryptography transition. HQ: Canberra, Australia.</description>
+<Point><coordinates>149.13,-35.2809,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>Japan CRYPTREC / IPA</name>
+<description>Regional Authorities (international) - Japanese cryptographic algorithm evaluation and promotion. HQ: Tokyo, Japan.</description>
+<Point><coordinates>139.6503,35.6762,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>South Korea KISA / NSR</name>
+<description>Regional Authorities (international) - Korean PQC competition and national transition programme. HQ: Seoul, South Korea.</description>
+<Point><coordinates>126.978,37.5665,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>China CCSA / MIIT</name>
+<description>Regional Authorities (international) - Chinese QKD networks and quantum communications standardisation. HQ: Beijing, China.</description>
+<Point><coordinates>116.4074,39.9042,0</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>GSMA / FS-ISAC + Global Industry</name>
+<description>Sector / Industry (international) - Telco and finance sector guidance; PQShield, ID Quantique, Arqit, Toshiba, QNu Labs, Thales. HQ: London (anchor), United Kingdom. Anchor location.</description>
+<Point><coordinates>-0.1278,51.5074,0</coordinates></Point>
+</Placemark>
+</Document>
+</kml>
