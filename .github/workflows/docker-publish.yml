@@ -3,12 +3,13 @@ name: Docker Publish
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -19,4 +20,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: credkellar/acd-quantum:latest
+          tags: |
+            credkellar/acd-quantum:latest
+            credkellar/acd-quantum:sha-${{ github.sha }}
