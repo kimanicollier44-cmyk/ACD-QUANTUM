@@ -1,6 +1,10 @@
 # ACD-Quantum
 
-![ACD-Quantum Cover](assets/cover.png)
+![ACD-Quantum Cover](ACD-Quantum%20cover.png)
+
+<p align="center">
+  <img src="1795749636374.jpg" alt="ACD-Quantum Original Art" width="420">
+</p>
 
 ## What is this?
 
