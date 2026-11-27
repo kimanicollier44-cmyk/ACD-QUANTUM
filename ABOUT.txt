@@ -1,0 +1,1 @@
+ACD-Quantum maps quantum cyber security as a structure tree: Top 15 National (USA) and Top 15 International bodies, standards and industry, with a crypto inventory scanner, PQC migration scoring and plan, BB84 QKD and QRNG simulations, and a Harvest-Now-Decrypt-Later risk calculator. Pure Python, offline. Deterministic, zero dependencies by design.

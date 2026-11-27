@@ -1,0 +1,2 @@
+# ACD-Quantum runtime: pure Python 3.12 standard library - no dependencies.
+# Development/test only: pytest (pip install pytest), Pillow was used for cover artwork.
