@@ -130,7 +130,7 @@ def test_hndl_mosca_safe():
 def test_run_checks_passes(capsys):
     assert main.run_checks() is True
     out = capsys.readouterr().out
-    assert "CHECKS 88/88" in out
+    assert "CHECKS 105/105" in out
 
 
 # --- Merge 1: Google Earth layer ---
@@ -742,3 +742,169 @@ def test_six_cycle_media_readiness():
                   if isinstance(e["data"], dict)
                   and e["data"].get("event") == "plan_emitted"]
     assert responding[0]["data"]["media"]["camera_ready"] is True
+
+
+# --- Merge 8: Monad chain layer -------------------------------------------
+
+def test_monad_chain_ids_and_networks():
+    mainnet = main.monad_network("mainnet")
+    testnet = main.monad_network("testnet")
+    assert mainnet["chain_id"] == 143
+    assert mainnet["rpc_url"] == "https://rpc.monad.xyz"
+    assert testnet["chain_id"] == 10143
+    assert testnet["rpc_url"] == "https://testnet-rpc.monad.xyz"
+    assert main.monad_network("nope") is None
+    profile = main.monad_profile()
+    assert profile["throughput_tps"] == 10000
+    assert profile["block_time_ms"] == 300
+    assert profile["finality_ms"] == 600
+    assert profile["live_calls"] is False
+
+
+def test_monad_token_profile():
+    tok = main.MONAD_TOKEN_PROFILE
+    assert tok["symbol"] == "MON" and tok["decimals"] == 18
+    assert tok["total_supply"] == 100_000_000_000
+    assert tok["fixed_supply"] is True
+
+
+def test_monad_block_math():
+    sim = main.simulate_tps(10000, seconds=3.0)
+    assert sim["blocks_per_second"] == 3.333
+    assert sim["tx_per_block_target"] == 3000.0
+    assert sim["blocks"] == 10  # 3 s at 300 ms blocks
+
+
+def test_monad_tps_simulator_and_ceiling():
+    sim = main.simulate_tps(10000, seconds=3.0)
+    assert abs(sim["achieved_tps"] - 10000) / 10000 < 0.05
+    assert sim["ceiling_flag"] == "WITHIN_CATALOG_CEILING"
+    assert sum(sim["tx_mix"].values()) == sim["total_transactions"]
+    assert sim["tx_mix"]["transfers"] > sim["tx_mix"]["mints"] > 0
+    assert sim["success_rate_pct"] > 99
+    over = main.simulate_tps(20000, seconds=1.0)
+    assert over["ceiling_flag"] == "EXCEEDS_CATALOG_CEILING"
+    assert main.simulate_tps(10000, seconds=3.0) == sim  # deterministic
+
+
+def test_monad_parallel_conflicts_reexecuted():
+    hot = main.parallel_execute(main.synthetic_parallel_batch(True), lanes=4)
+    assert hot["conflicts"] > 0 and hot["reexecutions"] > 0
+    assert len(hot["reexecuted_ids"]) == hot["reexecutions"]
+    assert hot["speedup"] > 1
+
+
+def test_monad_parallel_disjoint_no_reexecution():
+    dis = main.parallel_execute(main.synthetic_parallel_batch(False), lanes=4)
+    assert dis["conflicts"] == 0 and dis["reexecutions"] == 0
+    assert dis["speedup"] > 1
+    assert dis["parallel_time_units"] < dis["serial_time_units"]
+
+
+def test_monad_address_validation():
+    assert main.validate_address(main.MONAD_SAMPLE_EOA) is True
+    assert main.validate_address("0x123") is False
+    assert main.validate_address("1234567890abcdef1234567890abcdef12345678") is False
+    assert main.validate_address("0xZZ34567890abcdef1234567890abcdef12345678") is False
+    assert main.validate_address("") is False
+
+
+def test_monad_account_quantum_risk_reuses_scanner():
+    risk = main.monad_account_risk(main.MONAD_SAMPLE_EOA)
+    assert risk["valid"] is True
+    assert risk["signature_status"] == "vulnerable"
+    assert risk["signature_status"] == main.classify_algorithm("ECDSA")["status"]
+    assert risk["risk_rating"] == "HIGH"
+    assert risk["chain_verdict"] == "NO-GO"
+    assert len(risk["migration_path"]) == 5
+    hidden = main.monad_account_risk(main.MONAD_SAMPLE_EOA,
+                                     public_key_exposed=False)
+    assert hidden["risk_rating"] == "MEDIUM"
+    bad = main.monad_account_risk("0x123")
+    assert bad["valid"] is False and bad["risk_rating"] == "UNKNOWN"
+
+
+def test_monad_quorum_math():
+    q = main.validator_quorum(100)
+    assert q["quorum"] == 67 and q["fault_tolerance"] == 33
+    assert main.validator_quorum(4)["quorum"] == 3
+    assert main.validator_quorum(4)["fault_tolerance"] == 1
+    model = main.validator_set_model(100)
+    assert model["consensus"] == "MonadBFT" and model["stake_weighted"] is True
+
+
+def test_monad_gas_and_transaction_model():
+    assert main.estimate_gas("transfer")["gas"] == 21000
+    assert main.estimate_gas("swap")["gas"] > 21000
+    tx = main.build_transaction(main.MONAD_SAMPLE_EOA,
+                                main.MONAD_SAMPLE_EOA, 1.5, nonce=7)
+    assert tx["gas"] == 21000 and tx["chain_id"] == 143
+    assert tx["maxFeePerGas"] == 100 and tx["maxPriorityFeePerGas"] == 2
+    assert "not broadcast" in tx["status"]
+    import pytest
+    with pytest.raises(ValueError):
+        main.build_transaction("0x123", main.MONAD_SAMPLE_EOA, 1.0)
+    with pytest.raises(ValueError):
+        main.estimate_gas("teleport")
+
+
+def test_monad_tx_lifecycle_finality():
+    life = main.tx_lifecycle()
+    states = [s["state"] for s in life["states"]]
+    assert states[0] == "mempool" and states[-1] == "finalized"
+    assert life["final_state"] == "finalized"
+    assert life["finality_ms"] == 600 and life["states"][-1]["at_ms"] == 600
+    assert any("RaptorCast" in s for s in states)
+    assert any("MonadBFT" in s for s in states)
+
+
+def test_monad_voice_routes():
+    assert main.parse_voice_command("ACD monad tps")["mode"] == "monad-tps"
+    assert main.parse_voice_command("check monad")["mode"] == "monad"
+    assert main.parse_voice_command("ACD monad quantum risk")["mode"] == "monad-risk"
+    assert main.parse_voice_command("monad parallel")["mode"] == "monad-parallel"
+
+
+def test_monad_recommended_features_catalog():
+    feats = main.monad_recommended_features()
+    assert len(feats) >= 12
+    assert all(f["status"] == "merged" for f in feats)
+    names = " ".join(f["feature"] for f in feats)
+    for piece in ("10,000 TPS", "300 ms", "600 ms", "MonadBFT", "RaptorCast",
+                  "MonadDB", "parallel execution", "deferred execution",
+                  "EVM", "EIP-1559"):
+        assert piece in names
+
+
+def test_monad_argon_chain_decision_no_override():
+    decision = main.monad_argon_chain_decision()
+    assert decision["verdict"] == "NO-GO"
+    assert decision["can_override"] is False
+    assert len(decision["trace_hash"]) == 64
+
+
+def test_monad_bridge_mev_and_contract_audit():
+    assert main.bridge_risk()["quantum_risk"] == "HIGH"
+    assert main.bridge_risk()["signature_status"] == "vulnerable"
+    assert main.bridge_risk(model="liquidity_network")["quantum_risk"] == "MEDIUM"
+    audit = main.smart_contract_audit(main.MONAD_SAMPLE_EOA)
+    assert audit["overall_quantum_risk"] == "HIGH"
+    items = {e["item"]: e["quantum_risk"] for e in audit["checklist"]}
+    assert items["Signature scheme"] == "HIGH"
+    assert items["Admin keys"] == "HIGH"
+    assert items["Bridge exposure"] == "LOW"
+    bridge_audit = main.smart_contract_audit(is_bridge=True)
+    assert {e["item"]: e["quantum_risk"]
+            for e in bridge_audit["checklist"]}["Bridge exposure"] == "HIGH"
+    assert len(main.mev_protection_catalog()) >= 3
+
+
+def test_six_cycle_monad_readiness():
+    cycle = main.run_six_cycle(["ML-KEM-1024", "AES-256"])
+    mon = cycle["monad"]
+    assert mon["ready"] is True and mon["chain_id"] == 143
+    assert mon["throughput_tps"] == 10000 and mon["live_calls"] is False
+    responding = [e for e in cycle["ledger"]
+                  if isinstance(e["data"], dict)
+                  and e["data"].get("event") == "plan_emitted"]
+    assert responding[0]["data"]["chain"]["monad_ready"] is True

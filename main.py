@@ -27,7 +27,13 @@ Features:
      sample buffers / WAV files, a Bluetooth device / profile /
      pairing-security model over a labelled synthetic scan, and a
      3D 8K cinematic camera spec + capture-plan model
- 14. Self-checks runner printing CHECKS x/x
+ 14. Monad chain layer: chain profile (mainnet 143 / testnet 10143),
+     10k TPS simulator at 300 ms blocks / 600 ms finality, optimistic
+     parallel execution model, EIP-1559 tx + lifecycle model, EVM
+     account quantum-risk audit (ECDSA flagged by the scanner),
+     validator / bridge / MEV risk models, recommended-features
+     catalog - offline models only, no live RPC, no keys, no real txs
+ 15. Self-checks runner printing CHECKS x/x
 
 Honest limits: this is an educational / planning tool. The QKD and QRNG
 modules are classical simulations of quantum protocols - they do not use
@@ -37,7 +43,9 @@ validated implementations of the NIST standards. The media layer is
 likewise models, specs, plans and text / sample-data processing only:
 no real microphone, speaker hardware, Bluetooth radio or camera is
 accessed, the Bluetooth scan is synthetic, and the voiceprints are
-synthetic demo vectors - never real biometric identification.
+synthetic demo vectors - never real biometric identification. The
+Monad chain layer is likewise offline models and simulations only:
+no live RPC calls, no keys, and no real transactions.
 """
 
 import argparse
@@ -865,7 +873,10 @@ def run_six_cycle(items=None, stakes="final"):
                                    "audio_ready": True,
                                    "bluetooth_ready": True,
                                    "camera_ready": True,
-                                   "hardware_accessed": False}})
+                                   "hardware_accessed": False},
+                         "chain": {"monad_ready": True,
+                                   "chain_id": 143,
+                                   "live_calls": False}})
 
     core.transition("LEARNING")
     ledger.append_entry({"state": "LEARNING", "event": "run_recorded",
@@ -885,7 +896,12 @@ def run_six_cycle(items=None, stakes="final"):
                       "audio_ready": True, "bluetooth_ready": True,
                       "camera_ready": True, "hardware_accessed": False,
                       "bluetooth_scan": "synthetic",
-                      "voiceprints": "synthetic demo vectors"}}
+                      "voiceprints": "synthetic demo vectors"},
+            "monad": {"ready": True, "chain_id": 143,
+                      "throughput_tps": MONAD_TPS_CEILING,
+                      "block_time_ms": MONAD_BLOCK_MS,
+                      "finality_ms": MONAD_FINALITY_MS,
+                      "live_calls": False}}
 
 
 # --------------------------------------------------------------------------
@@ -1901,6 +1917,11 @@ WAKE_PHRASES = ("hey acd quantum", "ok acd quantum", "hey acd", "ok acd",
 # Command grammar: (phrases, mode). Longer / more specific phrases first.
 VOICE_GRAMMAR = [
     (("run checks", "run the checks", "self checks", "check yourself"), "checks"),
+    (("monad tps", "monad throughput", "monad speed"), "monad-tps"),
+    (("monad parallel", "parallel execution"), "monad-parallel"),
+    (("monad quantum risk", "monad risk"), "monad-risk"),
+    (("monad plan", "monad migration"), "monad-plan"),
+    (("check monad", "monad"), "monad"),
     (("street view", "streetview", "show panorama", "open panorama"), "streetview"),
     (("distance from", "distance between", "distance"), "distance"),
     (("docker images", "recommended images", "show images", "images"), "images"),
@@ -2618,7 +2639,466 @@ def camera_capture_plan(body_query, resolution="8K DCI", fps=24,
 
 
 # --------------------------------------------------------------------------
-# 14. Self-checks
+# 14. Monad chain layer (offline models / simulations - NO live RPC)
+# --------------------------------------------------------------------------
+
+MONAD_HONESTY_NOTE = (
+    "Monad layer = offline deterministic models and simulations only. "
+    "No live RPC calls are made, no keys are used, and no real "
+    "transactions are created, signed or broadcast. Throughput, latency "
+    "and timing figures are simulated estimates against the published "
+    "Monad catalog parameters, not measurements of the live network.")
+
+# Published Monad catalog parameters (Monad docs, page updated 2026-07-23):
+# 10,000 TPS, 300 ms block frequency, 600 ms finality, MonadBFT consensus,
+# RaptorCast block propagation, asynchronous / deferred execution,
+# optimistic parallel execution, MonadDB, 100% EVM compatible.
+MONAD_TPS_CEILING = 10000
+MONAD_BLOCK_MS = 300
+MONAD_FINALITY_MS = 600
+
+MONAD_NETWORKS = [
+    {"name": "Monad Mainnet", "network": "mainnet", "chain_id": 143,
+     "rpc_url": "https://rpc.monad.xyz",
+     "explorer_url": "https://monadexplorer.com",
+     "currency": "MON", "label": "catalog data (public endpoint)"},
+    {"name": "Monad Testnet", "network": "testnet", "chain_id": 10143,
+     "rpc_url": "https://testnet-rpc.monad.xyz",
+     "explorer_url": "https://testnet.monadexplorer.com",
+     "currency": "MON", "label": "catalog data (public endpoint)"},
+]
+
+MONAD_TOKEN_PROFILE = {
+    "name": "Monad", "symbol": "MON", "decimals": 18,
+    "total_supply": 100_000_000_000, "fixed_supply": True,
+    "label": "catalog data - labelled model entry, not a live balance",
+}
+
+MONAD_TX_MIX = {"transfers": 0.45, "swaps": 0.25, "mints": 0.10,
+                "contract_calls": 0.20}
+
+# Gas figures are labelled estimates in the EVM model; a plain transfer is
+# the canonical 21,000 gas.
+MONAD_GAS_ESTIMATES = {"transfer": 21000, "erc20_transfer": 45000,
+                       "swap": 150000, "mint": 90000,
+                       "contract_call": 100000}
+
+MONAD_RPC_METHODS = ["eth_blockNumber", "eth_call", "eth_chainId",
+                     "eth_estimateGas", "eth_getBalance",
+                     "eth_getTransactionByHash",
+                     "eth_getTransactionReceipt", "eth_sendRawTransaction"]
+
+MONAD_SAMPLE_EOA = "0x1234567890AbcdEF1234567890aBcdef12345678"
+
+
+def monad_network(network="mainnet"):
+    """One Monad network catalog entry by name ('mainnet' / 'testnet')."""
+    for entry in MONAD_NETWORKS:
+        if entry["network"] == str(network).strip().lower():
+            return dict(entry)
+    return None
+
+
+def monad_recommended_features():
+    """The recommended Monad feature set - every entry merged in ACD."""
+    rows = [
+        ("10,000 TPS throughput",
+         "Catalog ceiling of 10,000 transactions per second; the TPS "
+         "simulator flags anything above it EXCEEDS_CATALOG_CEILING."),
+        ("300 ms block frequency",
+         "Blocks every 300 ms (~3.33 blocks/sec, ~3,000 tx per block at "
+         "the 10k TPS ceiling)."),
+        ("600 ms finality",
+         "Transactions reach finality in ~600 ms in the lifecycle timing "
+         "model (mempool -> proposed -> voted -> finalized)."),
+        ("MonadBFT consensus",
+         "Byzantine fault tolerant consensus; quorum math is n - f with "
+         "f = (n - 1) // 3 (n=100 -> quorum 67, f=33)."),
+        ("RaptorCast block propagation",
+         "Erasure-coded block propagation stage in the tx lifecycle "
+         "model (the 'proposed' step)."),
+        ("Optimistic parallel execution",
+         "Transactions execute in parallel across lanes; conflicts are "
+         "detected and re-executed (simulated with read/write sets)."),
+        ("Asynchronous / deferred execution",
+         "Execution is deferred relative to consensus ordering in the "
+         "catalog model - ordering first, execution after."),
+        ("MonadDB",
+         "The chain's purpose-built state database (catalog entry)."),
+        ("100% EVM equivalence",
+         "Full EVM compatibility: EVM addresses, gas model and tooling "
+         "carry over unchanged."),
+        ("EIP-1559 fee market",
+         "Transactions carry maxFeePerGas / maxPriorityFeePerGas fields "
+         "in the transaction model."),
+        ("JSON-RPC method catalog",
+         "Standard eth_* method names catalogued (eth_call, "
+         "eth_estimateGas, eth_sendRawTransaction, ...); monad-specific "
+         "extensions are labelled catalog names only - nothing is called."),
+        ("Quantum-risk account audit (ACD tie-in)",
+         "EVM accounts use ECDSA / secp256k1, classified "
+         "QUANTUM-VULNERABLE by the ACD scanner; per-account exposure "
+         "reports + a PQC migration path are built in."),
+    ]
+    return [{"feature": name, "status": "merged", "description": desc}
+            for name, desc in rows]
+
+
+def monad_profile():
+    """Full Monad chain profile: networks, token, performance catalog."""
+    return {"networks": [dict(n) for n in MONAD_NETWORKS],
+            "token": dict(MONAD_TOKEN_PROFILE),
+            "throughput_tps": MONAD_TPS_CEILING,
+            "block_time_ms": MONAD_BLOCK_MS,
+            "finality_ms": MONAD_FINALITY_MS,
+            "blocks_per_second": round(1000.0 / MONAD_BLOCK_MS, 3),
+            "consensus": "MonadBFT",
+            "propagation": "RaptorCast",
+            "execution": ["asynchronous / deferred execution",
+                          "optimistic parallel execution"],
+            "database": "MonadDB",
+            "evm_compatible": True,
+            "rpc_methods": list(MONAD_RPC_METHODS),
+            "features": monad_recommended_features(),
+            "live_calls": False, "note": MONAD_HONESTY_NOTE}
+
+
+def simulate_tps(target_tps=10000, seconds=3.0, seed=42):
+    """
+    Deterministic throughput simulation at the 300 ms block frequency.
+    Per-block transaction counts jitter +-3% around the target share;
+    latency percentiles are labelled simulated estimates.
+    """
+    target = int(target_tps)
+    blocks_per_second = 1000.0 / MONAD_BLOCK_MS
+    num_blocks = max(1, int(round(float(seconds) * blocks_per_second)))
+    tx_per_block_target = target / blocks_per_second
+    rng = random.Random(seed)
+    per_block = [int(round(tx_per_block_target * (0.97 + 0.06 * rng.random())))
+                 for _ in range(num_blocks)]
+    total = sum(per_block)
+    duration_s = num_blocks * MONAD_BLOCK_MS / 1000.0
+    achieved = round(total / duration_s, 1) if duration_s else 0.0
+    mix = {}
+    assigned = 0
+    kinds = list(MONAD_TX_MIX)
+    for i, kind in enumerate(kinds):
+        if i == len(kinds) - 1:
+            mix[kind] = total - assigned
+        else:
+            mix[kind] = int(round(total * MONAD_TX_MIX[kind]))
+            assigned += mix[kind]
+    conflicts = int(round(total * 0.018))
+    failed = int(round(total * 0.001))
+    succeeded = total - failed
+    exceeds = target > MONAD_TPS_CEILING
+    return {"target_tps": target, "seconds": float(seconds),
+            "blocks": num_blocks,
+            "blocks_per_second": round(blocks_per_second, 3),
+            "block_time_ms": MONAD_BLOCK_MS,
+            "tx_per_block_target": round(tx_per_block_target, 1),
+            "total_transactions": total,
+            "achieved_tps": achieved,
+            "tx_mix": mix,
+            "conflicts": conflicts, "reexecuted": conflicts,
+            "succeeded": succeeded, "failed": failed,
+            "success_rate_pct": round(100.0 * succeeded / total, 2) if total else 0.0,
+            "latency_ms_estimates": {"p50": 180, "p95": 420, "p99": 580,
+                                     "label": "simulated estimate"},
+            "finality_ms": MONAD_FINALITY_MS,
+            "ceiling_flag": ("EXCEEDS_CATALOG_CEILING" if exceeds
+                             else "WITHIN_CATALOG_CEILING"),
+            "note": MONAD_HONESTY_NOTE}
+
+
+def synthetic_parallel_batch(conflicting=True, count=12):
+    """Synthetic transactions with read/write account sets (labelled)."""
+    txs = []
+    for i in range(int(count)):
+        if conflicting:
+            hot = "acct-hot" if i % 3 else "acct-hot-2"
+            writes = [hot, f"acct-{i}"]
+            reads = [f"acct-{(i + 1) % count}"]
+        else:
+            writes = [f"acct-{i}-w"]
+            reads = [f"acct-{i}-r"]
+        txs.append({"id": f"tx-{i + 1:02d}", "reads": reads,
+                    "writes": writes, "synthetic": True})
+    return txs
+
+
+def parallel_execute(transactions=None, lanes=4, seed=42):
+    """
+    Optimistic parallel execution simulation: every transaction runs in
+    parallel waves across lanes; a transaction whose write set touches an
+    earlier transaction's accessed set (or whose reads touch an earlier
+    write) conflicts and is re-executed in a follow-up wave.
+    """
+    txs = (list(transactions) if transactions is not None
+           else synthetic_parallel_batch(conflicting=True))
+    lanes = max(1, int(lanes))
+    seen_writes, seen_access = set(), set()
+    reexecuted_ids = []
+    for tx in txs:
+        reads = set(tx.get("reads", []))
+        writes = set(tx.get("writes", []))
+        if (writes & seen_access) or (reads & seen_writes):
+            reexecuted_ids.append(tx["id"])
+        seen_writes |= writes
+        seen_access |= reads | writes
+    n = len(txs)
+    conflicts = len(reexecuted_ids)
+    waves = math.ceil(n / lanes) if n else 0
+    reexec_waves = math.ceil(conflicts / lanes) if conflicts else 0
+    serial_units = n
+    parallel_units = waves + reexec_waves
+    speedup = round(serial_units / parallel_units, 2) if parallel_units else 0.0
+    return {"transactions": n, "lanes": lanes, "conflicts": conflicts,
+            "reexecutions": conflicts, "reexecuted_ids": reexecuted_ids,
+            "serial_time_units": serial_units,
+            "parallel_time_units": parallel_units, "speedup": speedup,
+            "model": "optimistic parallel execution (labelled simulation)",
+            "note": MONAD_HONESTY_NOTE}
+
+
+def estimate_gas(tx_type="transfer"):
+    """Labelled EVM gas estimate per transaction type (transfer = 21,000)."""
+    key = str(tx_type).strip().lower()
+    if key not in MONAD_GAS_ESTIMATES:
+        raise ValueError(f"unknown transaction type: {tx_type}")
+    return {"tx_type": key, "gas": MONAD_GAS_ESTIMATES[key],
+            "label": "estimate (EVM model)"}
+
+
+def validate_address(address):
+    """EVM address format check: '0x' followed by exactly 40 hex chars."""
+    return bool(re.fullmatch(r"0x[0-9a-fA-F]{40}", str(address or "")))
+
+
+def build_transaction(from_address, to_address, value_mon=0.0,
+                      tx_type="transfer", nonce=0,
+                      max_fee_per_gas=100, max_priority_fee_per_gas=2):
+    """Validated EVM transaction model (EIP-1559 fields). Never broadcast."""
+    if not validate_address(from_address):
+        raise ValueError(f"invalid from address: {from_address}")
+    if not validate_address(to_address):
+        raise ValueError(f"invalid to address: {to_address}")
+    if float(value_mon) < 0:
+        raise ValueError("value must be >= 0")
+    if int(nonce) < 0:
+        raise ValueError("nonce must be >= 0")
+    return {"from": from_address, "to": to_address,
+            "value_mon": float(value_mon), "tx_type": tx_type,
+            "gas": estimate_gas(tx_type)["gas"], "nonce": int(nonce),
+            "maxFeePerGas": max_fee_per_gas,
+            "maxPriorityFeePerGas": max_priority_fee_per_gas,
+            "chain_id": monad_network("mainnet")["chain_id"],
+            "status": "modelled - not signed, not broadcast",
+            "note": MONAD_HONESTY_NOTE}
+
+
+def tx_lifecycle(tx=None):
+    """Lifecycle timing model: mempool -> proposed -> voted -> finalized."""
+    stages = [{"state": "mempool", "at_ms": 0},
+              {"state": "proposed (RaptorCast)", "at_ms": MONAD_BLOCK_MS},
+              {"state": "voted (MonadBFT)", "at_ms": 450},
+              {"state": "finalized", "at_ms": MONAD_FINALITY_MS}]
+    return {"tx": tx, "states": stages, "final_state": "finalized",
+            "block_time_ms": MONAD_BLOCK_MS,
+            "finality_ms": MONAD_FINALITY_MS, "note": MONAD_HONESTY_NOTE}
+
+
+def monad_migration_path():
+    """PQC migration path for chain users, in the 5-phase plan language."""
+    return [
+        {"phase": 0, "name": "Discover",
+         "action": "Inventory every EVM account, contract, admin key and "
+                   "bridge position (CBOM for the chain estate)."},
+        {"phase": 1, "name": "Prioritise (HNDL first)",
+         "action": "Rank exposed public keys by value and shelf-life; "
+                   "long-lived, high-value EOAs migrate first."},
+        {"phase": 2, "name": "Replace vulnerable public-key",
+         "action": "Move value off exposed ECDSA keys to fresh, "
+                   "hash-based / ML-DSA-ready custody as PQC account "
+                   "options land; rotate contract admin keys."},
+        {"phase": 3, "name": "Strengthen symmetric + hybrid",
+         "action": "AES-256 / SHA-384 everywhere off-chain; hybrid "
+                   "(classical + PQC) signatures during transition."},
+        {"phase": 4, "name": "Agility + verify",
+         "action": "Keep signature schemes configurable (crypto-agility), "
+                   "re-run the ACD quantum-risk audit yearly and on every "
+                   "contract upgrade."},
+    ]
+
+
+def monad_account_risk(address, account_type="eoa", public_key_exposed=True):
+    """
+    Per-account quantum exposure report. EVM accounts sign with ECDSA on
+    secp256k1 - classified by the existing ACD scanner (reuse, not a copy).
+    An exposed EVM public key is a Shor target once a CRQC arrives.
+    """
+    valid = validate_address(address)
+    cls = classify_algorithm("ECDSA")
+    acct = str(account_type or "eoa").strip().lower()
+    if not valid:
+        rating, exposure = "UNKNOWN", "invalid address format"
+    elif acct == "eoa" and public_key_exposed:
+        rating = "HIGH"
+        exposure = ("EOA with exposed public key - direct Shor target "
+                    "once a CRQC arrives")
+    elif acct == "eoa":
+        rating = "MEDIUM"
+        exposure = ("EOA, key not yet exposed on-chain; the public key "
+                    "is revealed by the first outgoing transaction")
+    elif acct == "contract":
+        rating = "MEDIUM"
+        exposure = ("contract account - risk concentrates in its "
+                    "ECDSA admin / owner keys")
+    else:
+        rating, exposure = "MEDIUM", f"{acct} account - ECDSA-signed"
+    return {"address": address, "valid": valid, "account_type": acct,
+            "signature_scheme": "ECDSA (secp256k1)",
+            "signature_status": cls["status"],
+            "signature_detail": cls["detail"],
+            "public_key_exposed": bool(public_key_exposed),
+            "quantum_exposure": exposure, "risk_rating": rating,
+            "chain_verdict": ("NO-GO" if rating == "HIGH"
+                              else "CONDITIONAL GO"),
+            "migration_path": monad_migration_path(),
+            "note": MONAD_HONESTY_NOTE}
+
+
+def monad_argon_chain_decision():
+    """Argon 4 DECIDER over the chain exposure (ECDSA in the inventory)."""
+    decision = argon_decide(["ECDSA", "AES-256"], stakes="final")
+    return {"verdict": decision["verdict"],
+            "trace_hash": decision["trace_hash"],
+            "can_override": decision["seat"]["can_override"],
+            "seat_id": decision["seat"]["seat_id"],
+            "reason": "ECDSA (secp256k1) is quantum-vulnerable; the "
+                      "tighten-only DECIDER keeps the chain verdict at "
+                      "NO-GO until exposed keys are migrated."}
+
+
+def smart_contract_audit(address=None, upgradeable=True, is_bridge=False):
+    """Smart-contract quantum-risk audit checklist (model)."""
+    entries = [
+        {"item": "Signature scheme", "finding": "ECDSA (secp256k1)",
+         "quantum_risk": "HIGH",
+         "note": "Shor-vulnerable; plan ML-DSA / hash-based migration."},
+        {"item": "Admin keys", "finding": "ECDSA admin / owner keys",
+         "quantum_risk": "HIGH",
+         "note": "Rotate to PQC-ready custody; prefer multisig with "
+                 "distributed keys."},
+        {"item": "Upgradeability",
+         "finding": "upgradeable (proxy admin)" if upgradeable
+                    else "immutable (no proxy)",
+         "quantum_risk": "MEDIUM" if upgradeable else "LOW",
+         "note": "An upgrade path is also a migration path - keep it, "
+                 "guard the admin key." if upgradeable else
+                 "No upgrade path: a quantum break cannot be patched."},
+        {"item": "Bridge exposure",
+         "finding": "bridge contract surface" if is_bridge
+                    else "no bridge surface",
+         "quantum_risk": "HIGH" if is_bridge else "LOW",
+         "note": "Bridges concentrate value behind validator signatures."
+                 if is_bridge else "No cross-chain signature surface."},
+    ]
+    overall = ("HIGH" if any(e["quantum_risk"] == "HIGH" for e in entries)
+               else "MEDIUM")
+    return {"address": address, "checklist": entries,
+            "overall_quantum_risk": overall, "note": MONAD_HONESTY_NOTE}
+
+
+def validator_quorum(n_validators):
+    """MonadBFT quorum math: f = (n - 1) // 3, quorum = n - f (2/3+)."""
+    n = int(n_validators)
+    if n < 1:
+        raise ValueError("validator count must be >= 1")
+    f = (n - 1) // 3
+    return {"validators": n, "quorum": n - f, "fault_tolerance": f,
+            "rule": "quorum = n - f, f = (n - 1) // 3 (MonadBFT 2/3+)"}
+
+
+def validator_set_model(n_validators=100):
+    """Validator / staking model (stake-weighted, labelled model data)."""
+    model = validator_quorum(n_validators)
+    model.update({
+        "consensus": "MonadBFT", "stake_weighted": True,
+        "staking": {
+            "delegated_stake": "supported (labelled model entry)",
+            "unbonding": "labelled model entry - not a live parameter",
+            "slashing_risks": ["double-signing (modelled entry)",
+                               "extended downtime (modelled entry)"]},
+        "note": MONAD_HONESTY_NOTE})
+    return model
+
+
+def bridge_risk(model="lock_mint", validator_count=8,
+                signature_scheme="ECDSA"):
+    """Bridge risk assessment (model): design x signatures x quorum size."""
+    cls = classify_algorithm(signature_scheme)
+    vulnerable = cls["status"] in ("vulnerable", "broken")
+    if vulnerable and model == "lock_mint":
+        rating = "HIGH"
+    elif vulnerable:
+        rating = "MEDIUM"
+    else:
+        rating = "LOW"
+    return {"model": model, "validator_count": int(validator_count),
+            "signature_scheme": signature_scheme,
+            "signature_status": cls["status"], "quantum_risk": rating,
+            "mitigations": ["raise validator-set size / quorum",
+                            "migrate bridge signatures to ML-DSA / "
+                            "hash-based schemes",
+                            "cap locked value per bridge (HNDL exposure)"],
+            "note": MONAD_HONESTY_NOTE}
+
+
+def mev_protection_catalog():
+    """MEV mitigation catalog entries (model)."""
+    return [
+        {"mitigation": "Private orderflow",
+         "description": "Route transactions through private channels so "
+                        "they are not visible in the public mempool."},
+        {"mitigation": "Batch auctions",
+         "description": "Uniform clearing price per batch removes "
+                        "ordering advantage inside the batch."},
+        {"mitigation": "Encrypted mempool (catalog entry)",
+         "description": "Threshold-encrypted transaction pool; contents "
+                        "revealed only after ordering."},
+        {"mitigation": "Commit-reveal ordering (catalog entry)",
+         "description": "Hide intent until the order is fixed."},
+    ]
+
+
+def render_monad():
+    """Printable Monad profile + recommended-features catalog."""
+    profile = monad_profile()
+    lines = ["MONAD CHAIN LAYER (offline model - no live RPC, no keys, "
+             "no real transactions)"]
+    for net in profile["networks"]:
+        lines.append(f"{net['name']:<14} chain_id={net['chain_id']:<6} "
+                     f"rpc={net['rpc_url']} explorer={net['explorer_url']}")
+    tok = profile["token"]
+    lines.append(f"Token: {tok['symbol']} ({tok['name']}), "
+                 f"{tok['decimals']} decimals, "
+                 f"{tok['total_supply']:,} fixed supply")
+    lines.append(f"Performance: {profile['throughput_tps']:,} TPS, "
+                 f"{profile['block_time_ms']} ms blocks, "
+                 f"{profile['finality_ms']} ms finality, "
+                 f"{profile['consensus']} + {profile['propagation']}, "
+                 f"{profile['database']}, 100% EVM compatible")
+    lines.append("Recommended features (all merged):")
+    for i, feat in enumerate(profile["features"], 1):
+        lines.append(f"  {i:>2}. [{feat['status']}] {feat['feature']} - "
+                     f"{feat['description']}")
+    lines.append(f"note: {MONAD_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------
+# 15. Self-checks
 # --------------------------------------------------------------------------
 
 def _raises_value_error(fn):
@@ -2896,6 +3376,93 @@ def run_checks():
                    if isinstance(e["data"], dict)
                    and e["data"].get("state") == "RESPONDING")
           ["data"]["media"]["voice_ready"] is True)
+    # Monad chain layer (merge 8: offline models, no live RPC)
+    _mainnet = monad_network("mainnet")
+    _testnet = monad_network("testnet")
+    check("Monad chain ids: mainnet 143, testnet 10143",
+          _mainnet["chain_id"] == 143 and _testnet["chain_id"] == 10143
+          and _mainnet["rpc_url"] == "https://rpc.monad.xyz"
+          and _testnet["rpc_url"] == "https://testnet-rpc.monad.xyz")
+    check("MON token profile: 100B fixed supply, 18 decimals",
+          MONAD_TOKEN_PROFILE["symbol"] == "MON"
+          and MONAD_TOKEN_PROFILE["total_supply"] == 100_000_000_000
+          and MONAD_TOKEN_PROFILE["decimals"] == 18
+          and MONAD_TOKEN_PROFILE["fixed_supply"] is True)
+    _tps = simulate_tps(10000, seconds=3.0)
+    check("Monad block math: 300ms -> 3.333 blocks/s, ~3000 tx/block @10k TPS",
+          _tps["blocks_per_second"] == 3.333
+          and _tps["tx_per_block_target"] == 3000.0
+          and _tps["blocks"] == 10)
+    check("TPS simulator achieves within 5% of the 10k target",
+          abs(_tps["achieved_tps"] - 10000) / 10000 < 0.05
+          and _tps["ceiling_flag"] == "WITHIN_CATALOG_CEILING"
+          and _tps["tx_mix"]["transfers"] > _tps["tx_mix"]["mints"] > 0)
+    check("TPS above 10,000 flagged EXCEEDS_CATALOG_CEILING",
+          simulate_tps(20000, seconds=1.0)["ceiling_flag"]
+          == "EXCEEDS_CATALOG_CEILING")
+    _par_hot = parallel_execute(synthetic_parallel_batch(conflicting=True),
+                                lanes=4)
+    _par_dis = parallel_execute(synthetic_parallel_batch(conflicting=False),
+                                lanes=4)
+    check("parallel execution: conflicts re-executed, disjoint batch clean",
+          _par_hot["reexecutions"] > 0 and _par_dis["reexecutions"] == 0
+          and _par_dis["conflicts"] == 0)
+    check("parallel execution speedup > 1 on both batches",
+          _par_hot["speedup"] > 1 and _par_dis["speedup"] > 1)
+    check("EVM address validation accepts 0x+40hex, rejects bad formats",
+          validate_address(MONAD_SAMPLE_EOA) is True
+          and validate_address("0x123") is False
+          and validate_address("1234567890abcdef1234567890abcdef12345678")
+          is False)
+    _risk = monad_account_risk(MONAD_SAMPLE_EOA)
+    check("EOA quantum risk: ECDSA flagged vulnerable via scanner reuse",
+          _risk["signature_status"] == "vulnerable"
+          and _risk["signature_status"]
+          == classify_algorithm("ECDSA")["status"]
+          and _risk["risk_rating"] == "HIGH"
+          and len(_risk["migration_path"]) == 5)
+    check("MonadBFT quorum math: n=100 -> quorum 67, fault tolerance 33",
+          validator_quorum(100)["quorum"] == 67
+          and validator_quorum(100)["fault_tolerance"] == 33
+          and validator_quorum(4)["quorum"] == 3)
+    check("gas estimate: plain transfer = 21,000",
+          estimate_gas("transfer")["gas"] == 21000
+          and estimate_gas("swap")["gas"] > estimate_gas("transfer")["gas"])
+    _life = tx_lifecycle(build_transaction(MONAD_SAMPLE_EOA,
+                                           MONAD_SAMPLE_EOA, 1.5))
+    check("tx lifecycle reaches finalized with 600 ms finality",
+          _life["final_state"] == "finalized"
+          and _life["finality_ms"] == 600
+          and _life["states"][-1]["at_ms"] == 600)
+    check("voice grammar routes Monad phrases to the monad modes",
+          parse_voice_command("ACD monad tps")["mode"] == "monad-tps"
+          and parse_voice_command("check monad")["mode"] == "monad"
+          and parse_voice_command("ACD monad quantum risk")["mode"]
+          == "monad-risk")
+    _feats = monad_recommended_features()
+    check("recommended Monad features catalog: all merged, key pieces in",
+          len(_feats) >= 12
+          and all(f["status"] == "merged" for f in _feats)
+          and any("MonadBFT" in f["feature"] for f in _feats)
+          and any("RaptorCast" in f["feature"] for f in _feats)
+          and any("MonadDB" in f["feature"] for f in _feats))
+    _chain_decision = monad_argon_chain_decision()
+    check("Argon chain decision: ECDSA exposure stays NO-GO, no override",
+          _chain_decision["verdict"] == "NO-GO"
+          and _chain_decision["can_override"] is False)
+    check("bridge + contract audit: ECDSA surfaces rated HIGH",
+          bridge_risk()["quantum_risk"] == "HIGH"
+          and smart_contract_audit()["overall_quantum_risk"] == "HIGH"
+          and len(mev_protection_catalog()) >= 3)
+    check("SIx cycle reports Monad readiness, no live calls",
+          _cycle["monad"]["ready"] is True
+          and _cycle["monad"]["chain_id"] == 143
+          and _cycle["monad"]["live_calls"] is False
+          and next(e for e in _cycle["ledger"]
+                   if isinstance(e["data"], dict)
+                   and e["data"].get("state") == "RESPONDING")
+          ["data"]["chain"]["monad_ready"] is True)
+
 
     passed = sum(1 for _, ok in checks if ok)
     for name, ok in checks:
@@ -2963,6 +3530,13 @@ def demo():
           f"({_bt_demo['weakest']['name']}), "
           f"8K DCI 24fps RAW storage {_cam_demo['gb_per_hour']} GB/hour "
           f"(models only - no hardware accessed)")
+    _mon = simulate_tps(10000, seconds=3.0)
+    _mon_par = parallel_execute(synthetic_parallel_batch(conflicting=True))
+    print(f"Monad: 10,000 TPS catalog (300 ms blocks, 600 ms finality) - "
+          f"simulated {_mon['achieved_tps']} TPS over {_mon['blocks']} blocks, "
+          f"parallel speedup x{_mon_par['speedup']}, "
+          f"EOA quantum risk {monad_account_risk(MONAD_SAMPLE_EOA)['risk_rating']} "
+          f"(offline model - no live RPC)")
     print()
     return run_checks()
 
@@ -2973,7 +3547,9 @@ def main(argv=None):
                         choices=["demo", "tree", "checks", "scan", "plan", "qkd", "qrng", "hndl",
                                  "earth", "kml", "distance", "decide", "six", "ledger",
                                  "images", "recommend", "compose", "streetview", "map",
-                                 "voice", "speaker", "audio", "bluetooth", "camera"])
+                                 "voice", "speaker", "audio", "bluetooth", "camera",
+                                 "monad", "monad-tps", "monad-parallel",
+                                 "monad-risk", "monad-plan"])
     parser.add_argument("body_arg", nargs="?", default=None,
                         help="Optional body name (streetview) or transcript (voice)")
     parser.add_argument("--scope", default="all", choices=["all", "national", "international"])
@@ -2997,6 +3573,16 @@ def main(argv=None):
                         help="Voice preset id for speaker mode")
     parser.add_argument("--plan", dest="plan_body", default=None,
                         help="Body name for camera capture-plan mode")
+    parser.add_argument("--tps", dest="tps_flag", action="store_true",
+                        help="With monad mode: also print the TPS simulation")
+    parser.add_argument("--seconds", type=float, default=3.0,
+                        help="Duration for the monad-tps simulation")
+    parser.add_argument("--target-tps", type=int, default=10000,
+                        help="Target TPS for the monad-tps simulation")
+    parser.add_argument("--lanes", type=int, default=4,
+                        help="Parallel lanes for monad-parallel")
+    parser.add_argument("--validators", type=int, default=100,
+                        help="Validator count for the monad quorum model")
     parser.add_argument("--eve", action="store_true", help="Add an eavesdropper to the QKD run")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--shelf-life", type=float, default=10)
@@ -3096,6 +3682,12 @@ def main(argv=None):
               f"(synthetic scan), 3D 8K camera ready={media['camera_ready']} "
               f"(spec/plans only), hardware accessed="
               f"{media['hardware_accessed']}")
+        mon = cycle["monad"]
+        print(f"Monad: ready={mon['ready']}, chain_id={mon['chain_id']}, "
+              f"{mon['throughput_tps']:,} TPS catalog, "
+              f"{mon['block_time_ms']} ms blocks, "
+              f"{mon['finality_ms']} ms finality, "
+              f"live calls={mon['live_calls']}")
         return 0
     if args.mode == "ledger":
         cycle = run_six_cycle(algos)
@@ -3269,6 +3861,74 @@ def main(argv=None):
                   f"{est['card_capacity_gb']} GB card")
         print(f"stereo depth budget (65mm baseline): {stereo_depth_budget()}")
         print(f"note: {MEDIA_HONESTY_NOTE}")
+        return 0
+    if args.mode == "monad":
+        print(render_monad(), end="")
+        prof = monad_profile()
+        print(f"RPC methods (catalog names, never called): "
+              f"{', '.join(prof['rpc_methods'])}")
+        quorum = validator_quorum(args.validators)
+        print(f"Validator model: n={quorum['validators']} -> "
+              f"quorum={quorum['quorum']}, fault tolerance="
+              f"{quorum['fault_tolerance']} (MonadBFT)")
+        if args.tps_flag:
+            sim = simulate_tps(args.target_tps, seconds=args.seconds)
+            print(f"TPS simulation: target {sim['target_tps']:,}, achieved "
+                  f"{sim['achieved_tps']} over {sim['blocks']} blocks "
+                  f"({sim['ceiling_flag']})")
+        return 0
+    if args.mode == "monad-tps":
+        sim = simulate_tps(args.target_tps, seconds=args.seconds)
+        for k in ("target_tps", "achieved_tps", "blocks",
+                  "blocks_per_second", "tx_per_block_target",
+                  "total_transactions", "succeeded", "failed",
+                  "success_rate_pct", "conflicts", "reexecuted",
+                  "ceiling_flag"):
+            print(f"{k}: {sim[k]}")
+        print(f"tx_mix: {sim['tx_mix']}")
+        print(f"latency_ms_estimates: {sim['latency_ms_estimates']}")
+        print(f"finality_ms: {sim['finality_ms']}")
+        print(f"note: {sim['note']}")
+        return 0
+    if args.mode == "monad-parallel":
+        hot = parallel_execute(synthetic_parallel_batch(conflicting=True),
+                               lanes=args.lanes)
+        dis = parallel_execute(synthetic_parallel_batch(conflicting=False),
+                               lanes=args.lanes)
+        for label, res in (("conflicting batch", hot),
+                           ("disjoint batch", dis)):
+            print(f"{label}: txs={res['transactions']} lanes={res['lanes']} "
+                  f"conflicts={res['conflicts']} "
+                  f"reexecutions={res['reexecutions']} "
+                  f"serial={res['serial_time_units']} units, "
+                  f"parallel={res['parallel_time_units']} units, "
+                  f"speedup=x{res['speedup']}")
+        print(f"note: {hot['note']}")
+        return 0
+    if args.mode == "monad-risk":
+        address = args.body_arg or MONAD_SAMPLE_EOA
+        risk = monad_account_risk(address)
+        for k in ("address", "valid", "account_type", "signature_scheme",
+                  "signature_status", "public_key_exposed",
+                  "quantum_exposure", "risk_rating", "chain_verdict"):
+            print(f"{k}: {risk[k]}")
+        audit = smart_contract_audit(address)
+        print(f"contract audit overall quantum risk: "
+              f"{audit['overall_quantum_risk']}")
+        for entry in audit["checklist"]:
+            print(f"  - {entry['item']:<18} {entry['quantum_risk']:<6} "
+                  f"{entry['finding']}")
+        decision = monad_argon_chain_decision()
+        print(f"Argon 4 chain decision: {decision['verdict']} "
+              f"(can_override={decision['can_override']}, "
+              f"trace {decision['trace_hash']})")
+        print(f"note: {risk['note']}")
+        return 0 if risk["valid"] else 1
+    if args.mode == "monad-plan":
+        for step in monad_migration_path():
+            print(f"Phase {step['phase']} - {step['name']}")
+            print(f"  - {step['action']}")
+        print(f"note: {MONAD_HONESTY_NOTE}")
         return 0
     return 0 if demo() else 1
 

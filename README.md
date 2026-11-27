@@ -18,6 +18,8 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 
 **Merge 7 — media + sensing layer:** **voice recognition** (speech-to-intent over supplied transcripts: wake phrases, a command grammar routed to the existing CLI modes, slot extraction, speaker diarization, and a synthetic voiceprint similarity model), a **speech speaker** (TTS voice presets, SSML-like speech plans with clamped rate/pitch/volume, an utterance queue, and a speak-the-verdict helper), **audio** (real stdlib WAV generation + analysis — duration, RMS, peak, dBFS, silence — a codec model and labelled loudness targets), **Bluetooth** (BLE + Classic device/profile model with standard service UUIDs, a labelled synthetic scan with RSSI distance estimates, pairing-security assessment and a bonding store), and a **3D 8K cinematic camera** model (8K UHD/DCI, 24–120 fps, stereo depth budgets, FOV/framing calculators, colour pipelines, bitrate + storage estimates, and capture plans tied to a body's Earth coordinates and Street View pano). Honest labelling throughout: these are models, specs, plans and text/sample-data processing — **no real microphone, speaker hardware, Bluetooth radio or camera is accessed**, the Bluetooth scan is synthetic, and the voiceprints are synthetic demo vectors, never real biometric identification.
 
+**Merge 8 — Monad chain layer:** the **Monad** blockchain merged as a full offline chain layer built on the verified Monad catalog parameters — **10,000 TPS** throughput, **300 ms** block frequency, **600 ms** finality, **MonadBFT** consensus, **RaptorCast** block propagation, asynchronous / deferred execution, **optimistic parallel execution**, **MonadDB**, and **100% EVM compatibility** (mainnet chain ID **143**, testnet **10143**, native token **MON**, 100B fixed supply, 18 decimals). It ships a deterministic TPS simulator (anything above 10,000 TPS is flagged `EXCEEDS_CATALOG_CEILING`), an optimistic parallel-execution simulator with conflict re-execution and speedup figures, an EIP-1559 transaction + lifecycle model (mempool → proposed via RaptorCast → voted via MonadBFT → finalized at 600 ms), validator / staking quorum math (n=100 → quorum 67, fault tolerance 33), bridge and MEV risk models, a smart-contract quantum audit checklist, and the full recommended-features catalog — every entry status `merged`. The ACD tie-in: EVM accounts sign with **ECDSA / secp256k1**, which the existing scanner classifies **quantum-vulnerable**, so the layer adds per-account quantum-exposure reports (an exposed EVM public key is a Shor target once a CRQC arrives), a 5-phase PQC migration path for chain users, and an Argon 4 chain decision that stays **NO-GO** on ECDSA exposure (tighten-only, can never override). Honest labelling: this is offline models and simulations only — **no live RPC calls, no keys, no real transactions**; throughput and latency figures are simulated estimates against the published catalog parameters, not live network measurements.
+
 > Honest limits: the QKD and QRNG modules are classical simulations of quantum protocols. They use no real quantum hardware and produce no true quantum randomness. Real migration must use validated implementations of the NIST standards.
 
 ## 🧰 Tech Stack Badges & Full Architecture Tech Stack
@@ -78,7 +80,8 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 12. **Street View layer** — `python main.py streetview` prints the panorama table for all 30 bodies (deterministic pano id, HQ coordinates, default POV heading = bearing toward the nearest neighbouring body, pitch 10, status OK); `python main.py streetview NIST` prints one body's full panorama data — links to its two nearest neighbours with real bearing headings, tiles spec, image date, validated options, and the honest motion-tracking note (real device motion tracking needs an HTTPS browser page; this layer models the option flags). `python main.py streetview --html --out streetview.html` generates a standalone page that uses the real Maps JavaScript API exactly as documented: `StreetViewService.getPanorama` with radius 50 + outdoor source, OK / not-found handling, and a picker covering all 30 bodies.
 13. **Perfect Map layer** — `python main.py map` prints the map summary: 30 ACD-labelled markers grouped by region, overall and per-region bounds fits with suggested zooms, and the KML layer URL. `python main.py map --html --out map.html` generates the perfect-merge page: a `google.maps.Map` with every marker + InfoWindow, map-type switcher and all controls, the KML layer on the repo's own `earth/ACD-QUANTUM.kml`, and a linked Street View panel — click a marker and that body's panorama opens. Both HTML generators carry only the `YOUR_API_KEY` placeholder; add your own Google Maps key (kept under the name `GOOGLE_MAPS_API_KEY`) to use them live.
 14. **Media + sensing layer** — `python main.py voice "ACD scan RSA-2048 and AES-256"` parses a transcript through the SIx states (LISTENING → THINKING → RESPONDING): wake phrase detected, intent `scan`, algorithm slots extracted, confidence scored; unknown commands return a labelled no-match. `python main.py speaker` lists the TTS presets and renders the Argon verdict as an SSML-like speech plan (`--say "..."` plans any text, with rate/pitch/volume clamped). `python main.py audio --out tone.wav` generates a 440 Hz test tone and analyses it (16 kHz mono WAV, RMS ≈ 0.354, peak 0.5, duration 1.0 s) against the codec model and loudness targets. `python main.py bluetooth` prints the labelled synthetic scan (5 devices, RSSI → distance) and the pairing assessment — Just Works / legacy PIN flagged **WEAK** (no MITM protection), Numeric Comparison / Passkey / OOB **STRONG**. `python main.py camera` prints the 3D 8K spec and storage table (8K DCI 24 fps: RAW ≈ 18,345.89 GB/hour vs H.265 ≈ 458.64 GB/hour); `python main.py camera --plan NIST` builds a capture plan for filming NIST HQ from its Earth coordinates and Street View pano id. All of it is models/specs/plans — no microphone, speaker, radio or camera hardware is touched.
-15. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 88/88`.
+15. **Monad chain layer** — `python main.py monad` prints the chain profile (mainnet 143 / testnet 10143, MON token, performance catalog) and the recommended-features catalog, all status `merged`. `python main.py monad-tps` runs the deterministic throughput simulation at 300 ms blocks (~3,000 tx/block at the 10,000 TPS ceiling; targets above the ceiling are flagged). `python main.py monad-parallel` simulates optimistic parallel execution — a conflicting batch re-executes and still beats serial (x2.0), a disjoint batch runs clean (x4.0). `python main.py monad-risk <address>` audits an EVM account: ECDSA flagged quantum-vulnerable by the scanner, exposure class, contract audit checklist, and the Argon 4 chain verdict (NO-GO on exposed keys). `python main.py monad-plan` prints the 5-phase PQC migration path for chain users. Voice routes too: "ACD monad tps", "check monad". All offline — no live RPC, no keys, no real transactions.
+16. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 105/105`.
 
 ### Flowchart — main.py
 
@@ -93,7 +96,7 @@ flowchart TD
     H -->|no| J[Sifted key kept]
     B -->|qrng| K[SHA-256 counter expansion<br/>labelled simulation]
     B -->|hndl| L[Mosca: X + Y > Z ?]
-    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 88/88]
+    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 105/105]
 ```
 
 ### Flowchart — merged flow (SIx core + Argon 4 + Earth + fleet)
@@ -123,7 +126,7 @@ flowchart LR
 7. Honest QRNG: simulated, labelled simulated, never oversold.
 8. The Mosca inequality turns "quantum risk" into one arithmetic check.
 9. Fully deterministic — same seed, same result, byte-for-byte, so tests are exact.
-10. Self-verifying: every demo run ends with `CHECKS 88/88`.
+10. Self-verifying: every demo run ends with `CHECKS 105/105`.
 
 ## 10 problems it solves
 
@@ -213,6 +216,12 @@ python3 main.py audio --out tone.wav
 python3 main.py bluetooth
 python3 main.py camera
 python3 main.py camera --plan NIST
+python3 main.py monad
+python3 main.py monad --tps
+python3 main.py monad-tps
+python3 main.py monad-parallel
+python3 main.py monad-risk 0x1234567890AbcdEF1234567890aBcdef12345678
+python3 main.py monad-plan
 python3 main.py checks
 
 # 4. Run the tests (only dev dependency)
@@ -235,11 +244,11 @@ docker run --rm acd-quantum
 
 ```
 ACD-Quantum/
-├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, Street View, Perfect Map, media layer (voice/speaker/audio/Bluetooth/8K camera), checks, CLI
+├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, Street View, Perfect Map, media layer (voice/speaker/audio/Bluetooth/8K camera), Monad chain layer, checks, CLI
 ├── README.md                # This file
 ├── ABOUT.txt                # Exactly-350-character repo About description
 ├── tests/
-│   └── test_main.py         # pytest suite (80 tests)
+│   └── test_main.py         # pytest suite (96 tests)
 ├── assets/
 │   └── cover.png            # Cover image, 2736x912 (official remix of Darion's own art)
 ├── conftest.py              # Puts the repo root on sys.path for pytest imports
