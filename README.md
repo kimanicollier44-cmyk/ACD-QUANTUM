@@ -16,6 +16,8 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 
 **Merged in:** a **Google Earth layer** (real HQ coordinates for all 30 bodies, KML export for Google Earth, haversine distances), the **Gemini Argon 4 Extended Thinking DECIDER** seat (MAP→MODEL→STRESS→DECIDE, trace-hashed, tighten-only, names-only key, no live calls), the **SIx Neural Core** as the interface core driving every run (5-state machine + hash-chained audit ledger), a **Recommended Quantum Docker Images** catalog of Darion's own `credkellar/` fleet with a branch/topic recommendation engine, a **Google Maps Street View Service layer** (offline-faithful models of `StreetViewService.getPanorama`, `StreetViewPanorama` options/events and a custom panorama provider for all 30 bodies, plus a standalone Street View HTML generator), and a **Perfect Map layer** (the full Maps JavaScript API feature model — map options, 30 markers with InfoWindows, bounds fitting, Traffic/Transit/Bicycling/KML layers, map events, offline geocoding — and one combined map + Street View HTML page where clicking a marker opens that body's panorama).
 
+**Merge 7 — media + sensing layer:** **voice recognition** (speech-to-intent over supplied transcripts: wake phrases, a command grammar routed to the existing CLI modes, slot extraction, speaker diarization, and a synthetic voiceprint similarity model), a **speech speaker** (TTS voice presets, SSML-like speech plans with clamped rate/pitch/volume, an utterance queue, and a speak-the-verdict helper), **audio** (real stdlib WAV generation + analysis — duration, RMS, peak, dBFS, silence — a codec model and labelled loudness targets), **Bluetooth** (BLE + Classic device/profile model with standard service UUIDs, a labelled synthetic scan with RSSI distance estimates, pairing-security assessment and a bonding store), and a **3D 8K cinematic camera** model (8K UHD/DCI, 24–120 fps, stereo depth budgets, FOV/framing calculators, colour pipelines, bitrate + storage estimates, and capture plans tied to a body's Earth coordinates and Street View pano). Honest labelling throughout: these are models, specs, plans and text/sample-data processing — **no real microphone, speaker hardware, Bluetooth radio or camera is accessed**, the Bluetooth scan is synthetic, and the voiceprints are synthetic demo vectors, never real biometric identification.
+
 > Honest limits: the QKD and QRNG modules are classical simulations of quantum protocols. They use no real quantum hardware and produce no true quantum randomness. Real migration must use validated implementations of the NIST standards.
 
 ## 🧰 Tech Stack Badges & Full Architecture Tech Stack
@@ -38,6 +40,7 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 - **Docker fleet catalog** — 29 recommended quantum images from Darion's own `credkellar/` Docker Hub fleet (snapshot Nov 2026)
 - **Google Maps Street View Service (modelled)** — `StreetViewService.getPanorama` request/response model (location or pano id, radius 50 default, source default/outdoor, status OK / ZERO_RESULTS / UNKNOWN_ERROR), `StreetViewPanorama` options with docs defaults + heading wrap / pitch clamp validation, a custom panorama provider, the six documented `*_changed` events on an offline panorama model, and a standalone HTML generator that loads the real Maps JavaScript API (placeholder credential only — `YOUR_API_KEY`, key name `GOOGLE_MAPS_API_KEY`)
 - **Google Maps Perfect Map (modelled)** — `MapOptions` model (map types, all controls, gesture handling, min/max zoom, restriction), 30 markers (label `ACD`, DROP animation) with InfoWindow content, `LatLngBounds` fitting overall + per region, Traffic/Transit/Bicycling layer toggles, a `KmlLayer` for `earth/ACD-QUANTUM.kml`, a cover-image `GroundOverlay` example, the map event set on an offline map model, forward/reverse geocoding over the body data, and a combined map + Street View HTML generator (marker click → that body's panorama, the docs' side-by-side pattern)
+- **Media + sensing layer (modelled)** — voice recognition (wake phrases `ACD` / `hey ACD` / `ok ACD`, grammar → CLI modes, algorithm/body/distance slots, exact/fuzzy/unknown confidence, diarization, synthetic voiceprints with cosine match + UNKNOWN below threshold), speech speaker (4 TTS presets, SSML-like plans, FIFO utterance queue, verdict speaker), audio (stdlib `wave`/`struct` tone generation + WAV analysis, WAV/FLAC/MP3/AAC/Opus codec model, −16 LUFS podcast / −14 streaming labelled targets, mic→recognition→speaker pipeline spec), Bluetooth (BLE + Classic, 0x180D/0x180F/0x180A + A2DP/HFP/AVRCP/LE Audio/Auracast, synthetic scan, log-distance RSSI→distance, LE Secure Connections vs legacy pairing assessment — Just Works flagged WEAK, bonding store), 3D 8K cinematic camera (7680×4320 / 8192×4320, 24/30/60/120 fps, stereo interaxial + convergence + depth budget, FOV/framing math, RAW/LOG/HDR10/HLG pipelines, storage estimator, RAW+JPEG photo bursts, gimbal/IBIS/EIS modes, per-body capture plans)
 
 ### ⛓️ Web3 & Infrastructure
 
@@ -74,7 +77,8 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 11. **Docker image recommendations** — `python main.py images` prints the full fleet catalog; `python main.py recommend --topic QRNG` ranks images per branch/topic (QRNG → quantumrandom-lab first; QKD → quantumrepeater-lab, bellpair-factory; PQC → quantumshor-lab, magicstate-lab); `python main.py compose --topic QKD` prints a ready docker-compose snippet.
 12. **Street View layer** — `python main.py streetview` prints the panorama table for all 30 bodies (deterministic pano id, HQ coordinates, default POV heading = bearing toward the nearest neighbouring body, pitch 10, status OK); `python main.py streetview NIST` prints one body's full panorama data — links to its two nearest neighbours with real bearing headings, tiles spec, image date, validated options, and the honest motion-tracking note (real device motion tracking needs an HTTPS browser page; this layer models the option flags). `python main.py streetview --html --out streetview.html` generates a standalone page that uses the real Maps JavaScript API exactly as documented: `StreetViewService.getPanorama` with radius 50 + outdoor source, OK / not-found handling, and a picker covering all 30 bodies.
 13. **Perfect Map layer** — `python main.py map` prints the map summary: 30 ACD-labelled markers grouped by region, overall and per-region bounds fits with suggested zooms, and the KML layer URL. `python main.py map --html --out map.html` generates the perfect-merge page: a `google.maps.Map` with every marker + InfoWindow, map-type switcher and all controls, the KML layer on the repo's own `earth/ACD-QUANTUM.kml`, and a linked Street View panel — click a marker and that body's panorama opens. Both HTML generators carry only the `YOUR_API_KEY` placeholder; add your own Google Maps key (kept under the name `GOOGLE_MAPS_API_KEY`) to use them live.
-14. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 72/72`.
+14. **Media + sensing layer** — `python main.py voice "ACD scan RSA-2048 and AES-256"` parses a transcript through the SIx states (LISTENING → THINKING → RESPONDING): wake phrase detected, intent `scan`, algorithm slots extracted, confidence scored; unknown commands return a labelled no-match. `python main.py speaker` lists the TTS presets and renders the Argon verdict as an SSML-like speech plan (`--say "..."` plans any text, with rate/pitch/volume clamped). `python main.py audio --out tone.wav` generates a 440 Hz test tone and analyses it (16 kHz mono WAV, RMS ≈ 0.354, peak 0.5, duration 1.0 s) against the codec model and loudness targets. `python main.py bluetooth` prints the labelled synthetic scan (5 devices, RSSI → distance) and the pairing assessment — Just Works / legacy PIN flagged **WEAK** (no MITM protection), Numeric Comparison / Passkey / OOB **STRONG**. `python main.py camera` prints the 3D 8K spec and storage table (8K DCI 24 fps: RAW ≈ 18,345.89 GB/hour vs H.265 ≈ 458.64 GB/hour); `python main.py camera --plan NIST` builds a capture plan for filming NIST HQ from its Earth coordinates and Street View pano id. All of it is models/specs/plans — no microphone, speaker, radio or camera hardware is touched.
+15. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 88/88`.
 
 ### Flowchart — main.py
 
@@ -89,7 +93,7 @@ flowchart TD
     H -->|no| J[Sifted key kept]
     B -->|qrng| K[SHA-256 counter expansion<br/>labelled simulation]
     B -->|hndl| L[Mosca: X + Y > Z ?]
-    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 72/72]
+    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 88/88]
 ```
 
 ### Flowchart — merged flow (SIx core + Argon 4 + Earth + fleet)
@@ -119,7 +123,7 @@ flowchart LR
 7. Honest QRNG: simulated, labelled simulated, never oversold.
 8. The Mosca inequality turns "quantum risk" into one arithmetic check.
 9. Fully deterministic — same seed, same result, byte-for-byte, so tests are exact.
-10. Self-verifying: every demo run ends with `CHECKS 72/72`.
+10. Self-verifying: every demo run ends with `CHECKS 88/88`.
 
 ## 10 problems it solves
 
@@ -201,6 +205,14 @@ python3 main.py streetview NIST
 python3 main.py streetview --html --out streetview.html
 python3 main.py map
 python3 main.py map --html --out map.html
+python3 main.py voice "ACD scan RSA-2048 and AES-256"
+python3 main.py voice --demo
+python3 main.py speaker
+python3 main.py speaker --say "ACD Quantum is ready."
+python3 main.py audio --out tone.wav
+python3 main.py bluetooth
+python3 main.py camera
+python3 main.py camera --plan NIST
 python3 main.py checks
 
 # 4. Run the tests (only dev dependency)
@@ -223,11 +235,11 @@ docker run --rm acd-quantum
 
 ```
 ACD-Quantum/
-├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, Street View, Perfect Map, checks, CLI
+├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, Street View, Perfect Map, media layer (voice/speaker/audio/Bluetooth/8K camera), checks, CLI
 ├── README.md                # This file
 ├── ABOUT.txt                # Exactly-350-character repo About description
 ├── tests/
-│   └── test_main.py         # pytest suite (62 tests)
+│   └── test_main.py         # pytest suite (80 tests)
 ├── assets/
 │   └── cover.png            # Cover image, 2736x912 (official remix of Darion's own art)
 ├── conftest.py              # Puts the repo root on sys.path for pytest imports

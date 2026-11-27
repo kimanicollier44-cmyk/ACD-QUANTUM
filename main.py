@@ -21,13 +21,23 @@ Features:
  12. Perfect Map layer: full Maps JavaScript API map options model,
      markers + InfoWindows, bounds fitting, layers, map events,
      offline geocoding, combined map + Street View HTML generator
- 13. Self-checks runner printing CHECKS x/x
+ 13. Media + sensing layer (models / specs / plans only): voice
+     recognition (speech-to-intent over text), speech speaker (TTS
+     presets + SSML-like speech plans), audio analysis on generated
+     sample buffers / WAV files, a Bluetooth device / profile /
+     pairing-security model over a labelled synthetic scan, and a
+     3D 8K cinematic camera spec + capture-plan model
+ 14. Self-checks runner printing CHECKS x/x
 
 Honest limits: this is an educational / planning tool. The QKD and QRNG
 modules are classical simulations of quantum protocols - they do not use
 real quantum hardware, do not produce true quantum randomness, and do not
 by themselves make any real system quantum-safe. Real migration must use
-validated implementations of the NIST standards.
+validated implementations of the NIST standards. The media layer is
+likewise models, specs, plans and text / sample-data processing only:
+no real microphone, speaker hardware, Bluetooth radio or camera is
+accessed, the Bluetooth scan is synthetic, and the voiceprints are
+synthetic demo vectors - never real biometric identification.
 """
 
 import argparse
@@ -36,7 +46,10 @@ import json
 import math
 import os
 import random
+import re
+import struct
 import sys
+import wave
 from xml.sax.saxutils import escape as _xml_escape
 
 # --------------------------------------------------------------------------
@@ -846,7 +859,13 @@ def run_six_cycle(items=None, stakes="final"):
     ledger.append_entry({"state": "RESPONDING", "event": "plan_emitted",
                          "phases": len(plan), "verdict": decision["verdict"],
                          "streetview_ready": True,
-                         "streetview_bodies": len(all_bodies_with_geo())})
+                         "streetview_bodies": len(all_bodies_with_geo()),
+                         "media": {"voice_ready": True,
+                                   "speaker_ready": True,
+                                   "audio_ready": True,
+                                   "bluetooth_ready": True,
+                                   "camera_ready": True,
+                                   "hardware_accessed": False}})
 
     core.transition("LEARNING")
     ledger.append_entry({"state": "LEARNING", "event": "run_recorded",
@@ -861,7 +880,12 @@ def run_six_cycle(items=None, stakes="final"):
             "streetview": {"ready": True,
                            "bodies": len(all_bodies_with_geo()),
                            "sample_pano": pano_id_for("NIST"),
-                           "embed_mode": "streetview"}}
+                           "embed_mode": "streetview"},
+            "media": {"voice_ready": True, "speaker_ready": True,
+                      "audio_ready": True, "bluetooth_ready": True,
+                      "camera_ready": True, "hardware_accessed": False,
+                      "bluetooth_scan": "synthetic",
+                      "voiceprints": "synthetic demo vectors"}}
 
 
 # --------------------------------------------------------------------------
@@ -1860,7 +1884,741 @@ def build_map_html():
 
 
 # --------------------------------------------------------------------------
-# 13. Self-checks
+# 13. Media + sensing layer (models / specs / plans - NO hardware access)
+# --------------------------------------------------------------------------
+
+MEDIA_HONESTY_NOTE = (
+    "Media layer = offline models, specs, plans and text/sample-data "
+    "processing only. No real microphone, speaker hardware, Bluetooth "
+    "radio or camera is accessed; the Bluetooth scan is synthetic and "
+    "the voiceprints are synthetic demo vectors, never real biometrics.")
+
+# --- 13a. Voice recognition: speech-to-intent over supplied text ----------
+
+WAKE_PHRASES = ("hey acd quantum", "ok acd quantum", "hey acd", "ok acd",
+                "acd quantum", "acd")
+
+# Command grammar: (phrases, mode). Longer / more specific phrases first.
+VOICE_GRAMMAR = [
+    (("run checks", "run the checks", "self checks", "check yourself"), "checks"),
+    (("street view", "streetview", "show panorama", "open panorama"), "streetview"),
+    (("distance from", "distance between", "distance"), "distance"),
+    (("docker images", "recommended images", "show images", "images"), "images"),
+    (("compose", "docker compose"), "compose"),
+    (("recommend", "recommendations"), "recommend"),
+    (("neural core", "six cycle", "run six", "six"), "six"),
+    (("ledger", "audit ledger", "show the ledger"), "ledger"),
+    (("google earth", "earth", "show earth"), "earth"),
+    (("export kml", "kml"), "kml"),
+    (("open map", "show map", "perfect map", "map"), "map"),
+    (("structure tree", "show tree", "tree"), "tree"),
+    (("migration plan", "make a plan", "plan"), "plan"),
+    (("argon decide", "decide", "decision", "verdict"), "decide"),
+    (("scan", "scanner", "check algorithms"), "scan"),
+    (("quantum key distribution", "qkd", "bb84"), "qkd"),
+    (("quantum random", "qrng"), "qrng"),
+    (("hndl", "harvest now", "mosca"), "hndl"),
+    (("voice demo", "voice"), "voice"),
+    (("speaker presets", "speech presets", "speaker"), "speaker"),
+    (("audio", "sound check", "tone"), "audio"),
+    (("bluetooth", "pairing"), "bluetooth"),
+    (("camera", "cinematic", "8k"), "camera"),
+]
+
+_ALGO_TOKEN_RE = re.compile(
+    r"ML-KEM-\d+|ML-DSA-\d+|SLH-DSA|RSA-\d+|ECDSA|ECDH|X25519|P-256|"
+    r"AES-\d+|SHA-\d+|HQC|MD5|DES|DH")
+
+
+def normalize_transcript(text):
+    """Lower-case, strip punctuation, collapse whitespace (deterministic)."""
+    cleaned = re.sub(r"[^a-z0-9\-\s]", " ", str(text).lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _extract_algorithms(command_text):
+    """Algorithm slots, in order of appearance, from a normalised command."""
+    upper = command_text.upper()
+    found = []
+    for match in _ALGO_TOKEN_RE.finditer(upper):
+        token = match.group(0)
+        if token not in found:
+            found.append(token)
+    return found
+
+
+def _extract_body(command_text):
+    """Longest body name mentioned in the command, or None."""
+    best = None
+    for body in all_bodies_with_geo():
+        if body["name"].lower() in command_text:
+            if best is None or len(body["name"]) > len(best):
+                best = body["name"]
+    return best
+
+
+def _extract_distance_bodies(command_text):
+    """Parse 'distance NIST to ETSI' / 'distance from NIST to ETSI' slots."""
+    text = command_text
+    for prefix in ("distance from ", "distance between ", "distance "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    if " to " not in text:
+        return None
+    left, right = text.split(" to ", 1)
+    a, b = find_body(left.strip()), find_body(right.strip())
+    if a is None or b is None:
+        return None
+    return {"from_body": a["name"], "to_body": b["name"],
+            "km": distance_between(a["name"], b["name"])["km"]}
+
+
+def parse_voice_command(transcript):
+    """
+    Deterministic speech-to-intent over a supplied transcript string.
+    Returns wake handling, matched mode, extracted slots and a confidence
+    score (exact / fuzzy / unknown). No microphone is involved - the
+    transcript is text the caller already has.
+    """
+    raw = str(transcript or "")
+    text = normalize_transcript(raw)
+    wake_detected, wake_phrase, command = False, None, text
+    for wake in WAKE_PHRASES:
+        if text == wake or text.startswith(wake + " "):
+            wake_detected, wake_phrase = True, wake
+            command = text[len(wake):].strip()
+            break
+    result = {"transcript": raw, "normalized": text,
+              "wake_detected": wake_detected, "wake_phrase": wake_phrase,
+              "command": command, "mode": None, "intent": None,
+              "slots": {}, "confidence": 0.0, "confidence_level": "unknown",
+              "status": "no_match", "hardware_accessed": False,
+              "note": MEDIA_HONESTY_NOTE}
+    if not command:
+        result["intent"] = "wake_only"
+        result["confidence_level"] = "fuzzy"
+        result["confidence"] = 0.5
+        return result
+    # Slot-driven routes first (distance / scan carry their own payloads).
+    if command.startswith("distance"):
+        slots = _extract_distance_bodies(command)
+        if slots:
+            result.update({"mode": "distance", "intent": "distance",
+                           "slots": slots, "confidence": 0.97,
+                           "confidence_level": "exact", "status": "matched"})
+            return result
+    for phrases, mode in VOICE_GRAMMAR:
+        for phrase in phrases:
+            if command == phrase or command.startswith(phrase + " "):
+                slots = {}
+                if mode == "scan":
+                    slots["algorithms"] = _extract_algorithms(command)
+                body = _extract_body(command)
+                if body and mode in ("streetview", "map", "earth", "camera"):
+                    slots["body"] = body
+                result.update({"mode": mode, "intent": mode, "slots": slots,
+                               "confidence": 0.98 if command == phrase else 0.94,
+                               "confidence_level": "exact",
+                               "status": "matched"})
+                return result
+    # Fuzzy path: any grammar keyword appearing anywhere in the command.
+    for phrases, mode in VOICE_GRAMMAR:
+        if any(p in command for p in phrases):
+            slots = {}
+            if mode == "scan":
+                slots["algorithms"] = _extract_algorithms(command)
+            body = _extract_body(command)
+            if body and mode in ("streetview", "map", "earth", "camera"):
+                slots["body"] = body
+            result.update({"mode": mode, "intent": mode, "slots": slots,
+                           "confidence": 0.78, "confidence_level": "fuzzy",
+                           "status": "matched"})
+            return result
+    return result
+
+
+def route_voice_command(transcript):
+    """
+    Route a transcript through the SIx state machine: LISTENING parses,
+    THINKING resolves the intent, RESPONDING builds the speech plan.
+    """
+    core = SixNeuralCore()
+    core.transition("LISTENING")
+    parsed = parse_voice_command(transcript)
+    core.transition("THINKING")
+    core.transition("RESPONDING")
+    if parsed["status"] == "matched":
+        reply = (f"Understood. Running {parsed['mode']} mode"
+                 + (f" for {parsed['slots']['body']}"
+                    if parsed["slots"].get("body") else "")
+                 + (f" on {', '.join(parsed['slots']['algorithms'])}"
+                    if parsed["slots"].get("algorithms") else "")
+                 + ".")
+    else:
+        reply = ("I did not recognise that command. Try: scan, plan, "
+                 "decide, earth, street view, map, bluetooth or camera.")
+    speech = build_speech_plan(reply)
+    core.transition("IDLE")
+    return {"parsed": parsed, "states": [row[2] for row in core.history],
+            "reply_text": reply, "speech_plan": speech}
+
+
+def diarize_transcript(transcript):
+    """
+    Split a supplied multi-speaker transcript into turns. Speaker tags are
+    'NAME:' or 'SPEAKER n:' at the start of a segment (line or inline).
+    Returns turns plus per-speaker word counts. Text processing only.
+    """
+    text = str(transcript or "")
+    tag_re = re.compile(r"(?m)^\s*([A-Za-z][A-Za-z0-9 ._-]{0,40}?)\s*:\s*")
+    matches = list(tag_re.finditer(text))
+    turns = []
+    if not matches:
+        words = len(text.split())
+        if words:
+            turns.append({"speaker": "UNKNOWN", "text": text.strip(),
+                          "word_count": words})
+    else:
+        for i, match in enumerate(matches):
+            start = match.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            segment = text[start:end].strip()
+            turns.append({"speaker": match.group(1).strip().upper(),
+                          "text": segment,
+                          "word_count": len(segment.split())})
+    speakers = {}
+    for turn in turns:
+        entry = speakers.setdefault(turn["speaker"],
+                                    {"turns": 0, "words": 0})
+        entry["turns"] += 1
+        entry["words"] += turn["word_count"]
+    return {"turns": turns, "speakers": speakers,
+            "total_words": sum(t["word_count"] for t in turns),
+            "note": "Diarization model over supplied tagged text only."}
+
+
+def _synthetic_voiceprint(seed_text, dimensions=8):
+    """Deterministic synthetic voiceprint vector (demo data, NOT biometric)."""
+    digest = hashlib.sha256(f"acd-voiceprint:{seed_text}".encode()).digest()
+    vector = [round(b / 255.0, 4) for b in digest[:dimensions]]
+    norm = math.sqrt(sum(v * v for v in vector)) or 1.0
+    return [round(v / norm, 4) for v in vector]
+
+
+# Enrolled demo speakers: synthetic vectors only, labelled as such.
+ENROLLED_VOICEPRINTS = {
+    "Darion (demo)": _synthetic_voiceprint("darion-demo"),
+    "Analyst (demo)": _synthetic_voiceprint("analyst-demo"),
+    "Operator (demo)": _synthetic_voiceprint("operator-demo"),
+}
+VOICEPRINT_THRESHOLD = 0.82
+
+
+def cosine_similarity(a, b):
+    """Cosine similarity of two equal-length numeric vectors."""
+    if len(a) != len(b) or not a:
+        raise ValueError("vectors must be non-empty and equal length")
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return round(dot / (na * nb), 4)
+
+
+def match_voiceprint(vector, threshold=VOICEPRINT_THRESHOLD):
+    """
+    Match a synthetic voiceprint vector against the enrolled demo set.
+    Below threshold the speaker is UNKNOWN. SYNTHETIC DEMO DATA ONLY -
+    this is a similarity model, never real biometric identification.
+    """
+    scored = sorted(((cosine_similarity(vector, enrolled), name)
+                     for name, enrolled in ENROLLED_VOICEPRINTS.items()),
+                    reverse=True)
+    best_score, best_name = scored[0]
+    matched = best_score >= threshold
+    return {"speaker": best_name if matched else "UNKNOWN",
+            "similarity": best_score, "threshold": threshold,
+            "matched": matched, "synthetic_demo_data": True,
+            "biometric_identification": False,
+            "note": "Synthetic demo vectors only - not a real voiceprint."}
+
+
+# --- 13b. Speech speaker: TTS presets + SSML-like speech plans ------------
+
+VOICE_PRESETS = [
+    {"id": "acd-narrator", "name": "ACD Narrator", "language": "en-US",
+     "gender_style": "neutral", "rate": 1.0, "pitch": 0, "volume": 80},
+    {"id": "acd-analyst", "name": "ACD Analyst", "language": "en-US",
+     "gender_style": "feminine", "rate": 1.05, "pitch": 2, "volume": 75},
+    {"id": "acd-commander", "name": "ACD Commander", "language": "en-GB",
+     "gender_style": "masculine", "rate": 0.92, "pitch": -3, "volume": 85},
+    {"id": "acd-alert", "name": "ACD Alert", "language": "en-US",
+     "gender_style": "neutral", "rate": 1.15, "pitch": 4, "volume": 95},
+]
+SPEECH_RANGES = {"rate": (0.5, 2.0), "pitch": (-12, 12), "volume": (0, 100)}
+
+
+def _clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def get_voice_preset(preset_id="acd-narrator"):
+    for preset in VOICE_PRESETS:
+        if preset["id"] == preset_id:
+            return dict(preset)
+    raise ValueError(f"unknown voice preset: {preset_id}")
+
+
+def build_speech_plan(text, preset_id="acd-narrator", rate=None, pitch=None,
+                      volume=None, break_ms=250):
+    """
+    Build an SSML-like speech plan for text. Rate / pitch / volume are
+    validated and clamped to SPEECH_RANGES; the text is XML-escaped in
+    the markup. This is a plan/spec - no speaker hardware is driven.
+    """
+    preset = get_voice_preset(preset_id)
+    rate = _clamp(float(rate if rate is not None else preset["rate"]),
+                  *SPEECH_RANGES["rate"])
+    pitch = _clamp(float(pitch if pitch is not None else preset["pitch"]),
+                   *SPEECH_RANGES["pitch"])
+    volume = _clamp(float(volume if volume is not None else preset["volume"]),
+                    *SPEECH_RANGES["volume"])
+    break_ms = int(_clamp(int(break_ms), 0, 5000))
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", str(text))
+                 if s.strip()]
+    body = f' <break time="{break_ms}ms"/> '.join(
+        _xml_escape(s) for s in sentences)
+    ssml = (f'<speak version="1.0" xml:lang="{preset["language"]}">'
+            f'<prosody rate="{rate}" pitch="{pitch:+.0f}st" '
+            f'volume="{volume:.0f}">{body}</prosody></speak>')
+    return {"preset": preset["id"], "preset_name": preset["name"],
+            "language": preset["language"],
+            "gender_style": preset["gender_style"],
+            "rate": rate, "pitch": pitch, "volume": volume,
+            "break_ms": break_ms, "text": str(text), "ssml": ssml,
+            "sentences": len(sentences), "hardware_accessed": False,
+            "note": "Speech plan only - no speaker hardware is driven."}
+
+
+class SpeechQueue:
+    """Utterance queue model: enqueue speech plans, speak in FIFO order."""
+
+    def __init__(self):
+        self._items = []
+
+    def enqueue(self, plan):
+        self._items.append(plan)
+        return len(self._items)
+
+    def peek(self):
+        return self._items[0] if self._items else None
+
+    def next(self):
+        return self._items.pop(0) if self._items else None
+
+    def clear(self):
+        self._items.clear()
+
+    def __len__(self):
+        return len(self._items)
+
+
+def speak_verdict(items=None, stakes="final"):
+    """Render the Argon 4 verdict + readiness summary as a speech plan."""
+    items = list(items) if items is not None else list(DEMO_INVENTORY)
+    decision = argon_decide(items, stakes=stakes)
+    ready = migration_readiness(items, has_inventory=True)
+    text = (f"ACD Quantum decision: {decision['verdict']}. "
+            f"Migration readiness is {ready['score']} out of 100, "
+            f"grade {ready['grade']}. "
+            f"{len(decision['required_actions'])} required actions remain.")
+    return build_speech_plan(text, preset_id="acd-narrator")
+
+
+# --- 13c. Audio: stdlib analysis on generated buffers / WAV files ---------
+
+AUDIO_FORMATS = [
+    {"format": "WAV", "codec": "PCM 16-bit", "lossless": True,
+     "typical_bitrate_kbps": 1411, "use": "mastering / analysis"},
+    {"format": "FLAC", "codec": "FLAC", "lossless": True,
+     "typical_bitrate_kbps": 700, "use": "lossless archive"},
+    {"format": "MP3", "codec": "MP3", "lossless": False,
+     "typical_bitrate_kbps": 192, "use": "legacy distribution"},
+    {"format": "AAC", "codec": "AAC-LC", "lossless": False,
+     "typical_bitrate_kbps": 160, "use": "streaming / mobile"},
+    {"format": "Opus", "codec": "Opus", "lossless": False,
+     "typical_bitrate_kbps": 96, "use": "voice / low-bitrate streaming"},
+]
+LOUDNESS_TARGETS = {"podcast": -16.0, "streaming": -14.0, "broadcast": -23.0}
+
+
+def generate_tone_samples(frequency=440.0, seconds=1.0, sample_rate=16000,
+                          amplitude=0.5):
+    """Deterministic 16-bit sine test tone as a list of int samples."""
+    count = int(seconds * sample_rate)
+    amp = _clamp(float(amplitude), 0.0, 1.0) * 32767
+    return [int(round(amp * math.sin(2 * math.pi * frequency * i / sample_rate)))
+            for i in range(count)]
+
+
+def write_wav(path, samples, sample_rate=16000, channels=1):
+    """Write 16-bit PCM samples to a WAV file with the stdlib wave module."""
+    frames = b"".join(struct.pack("<h", int(_clamp(s, -32768, 32767)))
+                      for s in samples)
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(frames)
+    return str(path)
+
+
+def analyse_audio_samples(samples, sample_rate=16000, channels=1,
+                          bit_depth=16):
+    """Level analysis of a 16-bit sample buffer (RMS / peak / dBFS / silence)."""
+    samples = list(samples)
+    if not samples or sample_rate <= 0 or channels <= 0:
+        raise ValueError("need samples, a positive sample rate and channels")
+    full_scale = float(2 ** (bit_depth - 1))
+    norm = [s / full_scale for s in samples]
+    rms = math.sqrt(sum(v * v for v in norm) / len(norm))
+    peak = max(abs(v) for v in norm)
+    dbfs = round(20 * math.log10(rms), 2) if rms > 0 else -120.0
+    silence = sum(1 for v in norm if abs(v) < 0.01) / len(norm)
+    return {"sample_rate": sample_rate, "channels": channels,
+            "bit_depth": bit_depth, "samples": len(samples),
+            "duration_seconds": round(len(samples) / (sample_rate * channels), 4),
+            "rms": round(rms, 4), "peak": round(peak, 4),
+            "peak_dbfs": round(20 * math.log10(peak), 2) if peak > 0 else -120.0,
+            "rms_dbfs": dbfs, "silence_ratio": round(silence, 4),
+            "estimated_lufs": round(dbfs - 3.01, 2),
+            "loudness_basis": "estimate from RMS dBFS, not a BS.1770 meter"}
+
+
+def analyse_wav(path):
+    """Analyse a 16-bit WAV file: format params + level analysis."""
+    with wave.open(str(path), "rb") as wf:
+        params = {"sample_rate": wf.getframerate(),
+                  "channels": wf.getnchannels(),
+                  "bit_depth": wf.getsampwidth() * 8,
+                  "frames": wf.getnframes()}
+        raw = wf.readframes(params["frames"])
+    if params["bit_depth"] != 16:
+        raise ValueError("only 16-bit WAV analysis is modelled")
+    samples = list(struct.unpack(f"<{len(raw) // 2}h", raw))
+    result = analyse_audio_samples(samples, params["sample_rate"],
+                                   params["channels"], params["bit_depth"])
+    result["format"] = "WAV"
+    result["path"] = str(path)
+    return result
+
+
+def loudness_check(measured_lufs, target="podcast", tolerance=1.0):
+    """Compare a loudness estimate against a labelled delivery target."""
+    if target not in LOUDNESS_TARGETS:
+        raise ValueError(f"unknown loudness target: {target}")
+    goal = LOUDNESS_TARGETS[target]
+    delta = round(float(measured_lufs) - goal, 2)
+    return {"target": target, "target_lufs": goal,
+            "measured_lufs": float(measured_lufs), "delta_lu": delta,
+            "within_tolerance": abs(delta) <= tolerance,
+            "note": "Labelled estimate targets (-16 podcast / -14 streaming "
+                    "/ -23 broadcast LUFS)."}
+
+
+def audio_pipeline_spec():
+    """Mic-in -> recognition -> speaker-out pipeline spec (model only)."""
+    return {"input_profile": {"device": "modelled USB/BLE microphone",
+                              "sample_rate": 48000, "channels": 1,
+                              "bit_depth": 16, "hardware_accessed": False},
+            "recognition": {"engine": "ACD speech-to-intent (text model)",
+                            "wake_phrases": list(WAKE_PHRASES),
+                            "grammar_modes": sorted({m for _, m in VOICE_GRAMMAR})},
+            "output_profile": {"device": "modelled speaker output",
+                               "presets": [p["id"] for p in VOICE_PRESETS],
+                               "plan_format": "SSML-like markup",
+                               "hardware_accessed": False},
+            "note": MEDIA_HONESTY_NOTE}
+
+
+# --- 13d. Bluetooth: device / profile / pairing-security model ------------
+
+BLUETOOTH_SERVICES = [
+    {"name": "Heart Rate", "uuid": "0x180D", "kind": "GATT service",
+     "transport": "BLE"},
+    {"name": "Battery Service", "uuid": "0x180F", "kind": "GATT service",
+     "transport": "BLE"},
+    {"name": "Device Information", "uuid": "0x180A", "kind": "GATT service",
+     "transport": "BLE"},
+    {"name": "Generic Access", "uuid": "0x1800", "kind": "GATT service",
+     "transport": "BLE + Classic"},
+    {"name": "A2DP", "uuid": "0x110D", "kind": "profile",
+     "transport": "Classic", "use": "stereo audio streaming"},
+    {"name": "HFP", "uuid": "0x111E", "kind": "profile",
+     "transport": "Classic", "use": "hands-free calls"},
+    {"name": "AVRCP", "uuid": "0x110E", "kind": "profile",
+     "transport": "Classic", "use": "media remote control"},
+    {"name": "LE Audio (ASCS)", "uuid": "0x184E", "kind": "profile",
+     "transport": "BLE", "use": "LC3 audio over BLE"},
+    {"name": "Auracast (PACS)", "uuid": "0x1850", "kind": "profile",
+     "transport": "BLE", "use": "broadcast audio"},
+]
+_PAIRING_METHODS = {
+    "numeric_comparison": {"label": "Numeric Comparison",
+                           "stack": "LE Secure Connections",
+                           "mitm_protection": True, "authenticated": True,
+                           "verdict": "STRONG"},
+    "passkey_entry": {"label": "Passkey Entry",
+                      "stack": "LE Secure Connections",
+                      "mitm_protection": True, "authenticated": True,
+                      "verdict": "STRONG"},
+    "out_of_band": {"label": "Out of Band (OOB)",
+                    "stack": "LE Secure Connections",
+                    "mitm_protection": True, "authenticated": True,
+                    "verdict": "STRONG"},
+    "just_works": {"label": "Just Works", "stack": "LE (legacy or SC)",
+                   "mitm_protection": False, "authenticated": False,
+                   "verdict": "WEAK"},
+    "legacy_pin": {"label": "Legacy PIN", "stack": "Bluetooth Classic legacy",
+                   "mitm_protection": False, "authenticated": False,
+                   "verdict": "WEAK"},
+}
+
+
+def bluetooth_synthetic_scan(tx_power=-59):
+    """
+    SYNTHETIC scan results (labelled): no radio is scanned. Distances are
+    estimated from RSSI with the log-distance path-loss model.
+    """
+    raw = [
+        ("ACD Field Headset", "7C:2F:80:11:AC:01", "BLE", -48, True,
+         "numeric_comparison", ["0x180F", "0x184E", "0x1850"]),
+        ("Quantum Lab Sensor", "7C:2F:80:11:AC:02", "BLE", -62, True,
+         "just_works", ["0x180D", "0x180F", "0x180A"]),
+        ("ACD Lab Speaker", "7C:2F:80:11:AC:03", "Classic", -71, True,
+         "passkey_entry", ["0x110D", "0x110E", "0x111E"]),
+        ("Legacy Keyboard", "7C:2F:80:11:AC:04", "Classic", -83, True,
+         "legacy_pin", ["0x180A"]),
+        ("Unknown Beacon", "7C:2F:80:11:AC:05", "BLE", -90, False,
+         "just_works", ["0x180F"]),
+    ]
+    devices = []
+    for name, address, transport, rssi, connectable, pairing, uuids in raw:
+        devices.append({
+            "name": name, "address": address, "transport": transport,
+            "rssi_dbm": rssi, "connectable": connectable,
+            "pairing_method": pairing, "service_uuids": uuids,
+            "services": [s["name"] for s in BLUETOOTH_SERVICES
+                         if s["uuid"] in uuids],
+            "distance_m": estimate_distance_m(rssi, tx_power=tx_power),
+            "synthetic": True})
+    return devices
+
+
+def estimate_distance_m(rssi_dbm, tx_power=-59, path_loss_exponent=2.0):
+    """Log-distance path-loss estimate: d = 10 ** ((Tx - RSSI) / (10 * n))."""
+    return round(10 ** ((tx_power - float(rssi_dbm)) /
+                        (10 * path_loss_exponent)), 2)
+
+
+def assess_pairing(method):
+    """Security assessment of a pairing method (MITM / authentication)."""
+    key = str(method).strip().lower().replace(" ", "_").replace("-", "_")
+    if key not in _PAIRING_METHODS:
+        raise ValueError(f"unknown pairing method: {method}")
+    result = dict(_PAIRING_METHODS[key])
+    result["method"] = key
+    result["flag"] = ("WEAK - no MITM protection, do not trust for "
+                      "sensitive data" if result["verdict"] == "WEAK"
+                      else "OK - authenticated, MITM-protected pairing")
+    return result
+
+
+class BondingStore:
+    """Bonding store model: remembered pairings keyed by device address."""
+
+    def __init__(self):
+        self._bonds = {}
+
+    def bond(self, device, method=None):
+        method = method or device.get("pairing_method", "just_works")
+        record = {"name": device["name"], "address": device["address"],
+                  "transport": device.get("transport"),
+                  "assessment": assess_pairing(method), "bonded": True}
+        self._bonds[device["address"]] = record
+        return record
+
+    def get(self, address):
+        return self._bonds.get(address)
+
+    def list(self):
+        return [self._bonds[k] for k in sorted(self._bonds)]
+
+    def remove(self, address):
+        return self._bonds.pop(address, None) is not None
+
+    def __len__(self):
+        return len(self._bonds)
+
+
+def bluetooth_security_assessment(devices=None):
+    """Assess every scanned device's pairing; weakest link first."""
+    devices = list(devices) if devices is not None else bluetooth_synthetic_scan()
+    rows = []
+    for device in devices:
+        assessment = assess_pairing(device["pairing_method"])
+        rows.append({"name": device["name"], "address": device["address"],
+                     "method": device["pairing_method"],
+                     "verdict": assessment["verdict"],
+                     "mitm_protection": assessment["mitm_protection"],
+                     "flag": assessment["flag"]})
+    order = {"WEAK": 0, "STRONG": 1}
+    rows.sort(key=lambda r: (order[r["verdict"]], r["name"]))
+    weak = [r for r in rows if r["verdict"] == "WEAK"]
+    return {"devices": rows, "weak_count": len(weak),
+            "weakest": rows[0] if rows else None,
+            "strongest": rows[-1] if rows else None,
+            "synthetic_scan": True, "hardware_accessed": False,
+            "note": "Synthetic scan + pairing model - no radio accessed."}
+
+
+# --- 13e. 3D 8K cinematic camera: spec + capture-plan model ---------------
+
+CAMERA_RESOLUTIONS = {
+    "8K DCI": {"width": 8192, "height": 4320, "label": "8K DCI (8192x4320)"},
+    "8K UHD": {"width": 7680, "height": 4320, "label": "8K UHD (7680x4320)"},
+    "4K DCI": {"width": 4096, "height": 2160, "label": "4K DCI (4096x2160)"},
+    "4K UHD": {"width": 3840, "height": 2160, "label": "4K UHD (3840x2160)"},
+}
+CAMERA_FRAME_RATES = {24: "cinematic", 30: "broadcast", 60: "smooth",
+                      120: "slow motion"}
+CAMERA_CODECS = {
+    "RAW": {"bits_per_pixel": 48.0, "bit_depth": 16, "kind": "uncompressed raw"},
+    "ProRes 422 HQ": {"bits_per_pixel": 12.0, "bit_depth": 10,
+                      "kind": "intra-frame mezzanine"},
+    "H.265": {"bits_per_pixel": 1.2, "bit_depth": 10,
+              "kind": "long-GOP distribution"},
+    "H.264": {"bits_per_pixel": 2.0, "bit_depth": 8,
+              "kind": "long-GOP legacy"},
+}
+CAMERA_COLOR_PIPELINES = [
+    {"name": "RAW", "bit_depth": 16, "note": "sensor data, grade in post"},
+    {"name": "LOG", "bit_depth": 10, "note": "flat profile for grading"},
+    {"name": "HDR10", "bit_depth": 10, "note": "PQ transfer, static metadata"},
+    {"name": "HLG", "bit_depth": 10, "note": "hybrid log-gamma broadcast HDR"},
+]
+CAMERA_STABILIZATION = ["locked-off tripod", "3-axis gimbal",
+                        "IBIS (in-body)", "electronic (EIS)", "handheld"]
+
+
+def camera_spec_summary():
+    """The full 3D 8K cinematic camera spec model (no camera accessed)."""
+    return {"resolutions": CAMERA_RESOLUTIONS,
+            "frame_rates": CAMERA_FRAME_RATES,
+            "codecs": CAMERA_CODECS,
+            "color_pipelines": CAMERA_COLOR_PIPELINES,
+            "sensor": {"width_mm": 36.0, "height_mm": 24.0,
+                       "format": "full frame (modelled)"},
+            "stereo_3d": {"default_interaxial_mm": 65,
+                          "note": "twin-lens / rig model, depth budget checked"},
+            "photo_mode": {"burst_fps": 20, "formats": ["RAW", "RAW+JPEG"]},
+            "stabilization": CAMERA_STABILIZATION,
+            "hardware_accessed": False, "note": MEDIA_HONESTY_NOTE}
+
+
+def estimate_storage(resolution="8K DCI", fps=24, codec="RAW",
+                     card_capacity_gb=512):
+    """Bitrate + storage estimate from resolution x fps x codec model."""
+    if resolution not in CAMERA_RESOLUTIONS:
+        raise ValueError(f"unknown resolution: {resolution}")
+    if codec not in CAMERA_CODECS:
+        raise ValueError(f"unknown codec: {codec}")
+    res = CAMERA_RESOLUTIONS[resolution]
+    bpp = CAMERA_CODECS[codec]["bits_per_pixel"]
+    bits_per_s = res["width"] * res["height"] * float(fps) * bpp
+    mb_s = round(bits_per_s / 8 / 1_000_000, 2)
+    gb_hour = round(mb_s * 3600 / 1000, 2)
+    return {"resolution": resolution, "width": res["width"],
+            "height": res["height"], "fps": fps, "codec": codec,
+            "frame_rate_class": CAMERA_FRAME_RATES.get(fps, "custom"),
+            "mb_per_s": mb_s, "gb_per_min": round(mb_s * 60 / 1000, 2),
+            "gb_per_hour": gb_hour,
+            "card_capacity_minutes": round(card_capacity_gb / gb_hour * 60, 1)
+            if gb_hour else 0.0,
+            "card_capacity_gb": card_capacity_gb}
+
+
+def camera_fov(focal_mm, sensor_width_mm=36.0, sensor_height_mm=24.0):
+    """Horizontal / vertical / diagonal FOV from focal length + sensor."""
+    if focal_mm <= 0:
+        raise ValueError("focal length must be positive")
+    h = math.degrees(2 * math.atan(sensor_width_mm / (2 * focal_mm)))
+    v = math.degrees(2 * math.atan(sensor_height_mm / (2 * focal_mm)))
+    diag = math.hypot(sensor_width_mm, sensor_height_mm)
+    d = math.degrees(2 * math.atan(diag / (2 * focal_mm)))
+    return {"focal_mm": focal_mm, "hfov_deg": round(h, 2),
+            "vfov_deg": round(v, 2), "dfov_deg": round(d, 2)}
+
+
+def framing_at_distance(focal_mm, distance_m, sensor_width_mm=36.0,
+                        sensor_height_mm=24.0):
+    """Subject-plane width/height framed at a distance, + distance solver."""
+    fov = camera_fov(focal_mm, sensor_width_mm, sensor_height_mm)
+    width_m = 2 * distance_m * math.tan(math.radians(fov["hfov_deg"]) / 2)
+    height_m = 2 * distance_m * math.tan(math.radians(fov["vfov_deg"]) / 2)
+    return {"focal_mm": focal_mm, "distance_m": distance_m,
+            "frame_width_m": round(width_m, 2),
+            "frame_height_m": round(height_m, 2), "fov": fov}
+
+
+def stereo_depth_budget(interaxial_mm=65, convergence_m=3.0, nearest_m=1.0,
+                        farthest_m=10.0, max_parallax_deg=3.0):
+    """Stereo 3D depth-budget check (model): parallax at the nearest plane."""
+    if not (0 < nearest_m < convergence_m < farthest_m):
+        raise ValueError("need 0 < nearest < convergence < farthest")
+    baseline_m = interaxial_mm / 1000.0
+    parallax = math.degrees(baseline_m * (1 / nearest_m - 1 / convergence_m))
+    return {"interaxial_mm": interaxial_mm, "convergence_m": convergence_m,
+            "nearest_m": nearest_m, "farthest_m": farthest_m,
+            "max_parallax_deg": round(parallax, 2),
+            "budget_deg": max_parallax_deg,
+            "within_budget": parallax <= max_parallax_deg,
+            "note": "Model estimate - check on a 3D monitor before capture."}
+
+
+def camera_capture_plan(body_query, resolution="8K DCI", fps=24,
+                        codec="ProRes 422 HQ"):
+    """
+    Capture plan for filming a body's HQ: ties the Earth coordinates and
+    the Street View pano id (merges 5/6) to a 3D 8K camera plan. Spec /
+    plan only - no camera is accessed and nothing is recorded.
+    """
+    body = find_body(body_query)
+    if body is None:
+        return None
+    sv = streetview_for_body(body["name"])
+    storage = estimate_storage(resolution, fps, codec)
+    return {"body": body["name"], "city": body["city"],
+            "country": body["country"], "lat": body["lat"],
+            "lon": body["lon"], "streetview_pano": sv["pano"],
+            "streetview_heading": sv["pov"]["heading"],
+            "resolution": resolution, "fps": fps, "codec": codec,
+            "storage": storage,
+            "stereo": stereo_depth_budget(),
+            "fov_35mm": camera_fov(35),
+            "color_pipeline": "LOG (grade to HDR10)",
+            "stabilization": "3-axis gimbal",
+            "shot_list": ["establishing wide of HQ approach (Street View "
+                          "heading)", "orbit move at convergence distance",
+                          "detail pass: signage / entrance",
+                          "photo burst RAW+JPEG for the record"],
+            "hardware_accessed": False, "note": MEDIA_HONESTY_NOTE}
+
+
+# --------------------------------------------------------------------------
+# 14. Self-checks
 # --------------------------------------------------------------------------
 
 def _raises_value_error(fn):
@@ -2053,6 +2811,91 @@ def run_checks():
           and geocode_reverse(_nist_geo["lat"], _nist_geo["lon"])["results"][0]["body"] == "NIST")
     check("map options validation rejects bad mapTypeId",
           _raises_value_error(lambda: validate_map_options({"mapTypeId": "moon"})))
+    # Media + sensing layer (merge 7: models / specs / plans, no hardware)
+    _voice = parse_voice_command("ACD scan RSA-2048 and AES-256")
+    check("voice wake phrase + scan intent + algorithm slots",
+          _voice["wake_detected"] is True and _voice["mode"] == "scan"
+          and _voice["slots"]["algorithms"] == ["RSA-2048", "AES-256"]
+          and _voice["confidence_level"] == "exact")
+    _voice_dist = parse_voice_command("hey ACD distance NIST to ETSI")
+    check("voice distance slots resolve both bodies",
+          _voice_dist["mode"] == "distance"
+          and _voice_dist["slots"]["from_body"] == "NIST"
+          and _voice_dist["slots"]["to_body"] == "ETSI"
+          and _voice_dist["slots"]["km"] > 5000)
+    check("voice unknown command is a labelled no-match",
+          parse_voice_command("blorp the frobnicate")["status"] == "no_match"
+          and parse_voice_command("blorp the frobnicate")["confidence"] == 0.0)
+    _diar = diarize_transcript("DARION: scan the inventory now\n"
+                               "ANALYST: readiness looks low today")
+    check("diarization splits turns and counts words per speaker",
+          _diar["speakers"]["DARION"]["words"] == 4
+          and _diar["speakers"]["ANALYST"]["words"] == 4
+          and _diar["total_words"] == 8)
+    _vp_hit = match_voiceprint(ENROLLED_VOICEPRINTS["Darion (demo)"])
+    _vp_miss = match_voiceprint([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    check("voiceprint synthetic match + UNKNOWN below threshold",
+          _vp_hit["matched"] is True and _vp_hit["synthetic_demo_data"] is True
+          and _vp_miss["speaker"] == "UNKNOWN")
+    _speech = build_speech_plan("Hello <world> & friends.", rate=9, pitch=-99,
+                                volume=500)
+    check("speech plan clamps rate/pitch/volume and escapes markup",
+          _speech["rate"] == 2.0 and _speech["pitch"] == -12
+          and _speech["volume"] == 100 and "&lt;world&gt;" in _speech["ssml"]
+          and "<world>" not in _speech["ssml"])
+    _queue = SpeechQueue()
+    _queue.enqueue(_speech)
+    check("speech queue is FIFO and verdict plan renders",
+          len(_queue) == 1 and _queue.next()["text"].startswith("Hello")
+          and "decision:" in speak_verdict(["ML-KEM-1024", "AES-256"])["text"])
+    import tempfile as _tempfile
+    _wav_path = os.path.join(_tempfile.mkdtemp(), "acd-tone.wav")
+    write_wav(_wav_path, generate_tone_samples(440, 1.0, 16000))
+    _wav_info = analyse_wav(_wav_path)
+    check("WAV round-trip: 1s 16kHz mono, RMS/peak in sane ranges",
+          _wav_info["duration_seconds"] == 1.0
+          and _wav_info["sample_rate"] == 16000 and _wav_info["channels"] == 1
+          and 0.3 < _wav_info["rms"] < 0.4 and 0.49 < _wav_info["peak"] < 0.51)
+    check("audio codec catalog + loudness targets are labelled estimates",
+          len(AUDIO_FORMATS) == 5
+          and loudness_check(-16.0, "podcast")["within_tolerance"] is True
+          and loudness_check(-30.0, "streaming")["within_tolerance"] is False)
+    check("RSSI distance estimate is monotonic in signal strength",
+          estimate_distance_m(-40) < estimate_distance_m(-60)
+          < estimate_distance_m(-80))
+    check("pairing security: Just Works WEAK, Numeric Comparison STRONG",
+          assess_pairing("just_works")["verdict"] == "WEAK"
+          and assess_pairing("just_works")["mitm_protection"] is False
+          and assess_pairing("numeric_comparison")["verdict"] == "STRONG")
+    _bt = bluetooth_security_assessment()
+    check("bluetooth synthetic scan assessed, weakest flagged WEAK",
+          _bt["synthetic_scan"] is True and _bt["weak_count"] >= 1
+          and _bt["weakest"]["verdict"] == "WEAK"
+          and all(re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}", d["address"])
+                  for d in bluetooth_synthetic_scan()))
+    _raw_store = estimate_storage("8K DCI", 24, "RAW")
+    _h265_store = estimate_storage("8K DCI", 24, "H.265")
+    check("camera storage: 8K DCI 24fps RAW exceeds compressed",
+          _raw_store["gb_per_hour"] > _h265_store["gb_per_hour"] > 0
+          and _raw_store["width"] == 8192 and _raw_store["height"] == 4320)
+    _fov35 = camera_fov(35)
+    check("camera FOV math sane at 35mm full frame",
+          50 < _fov35["hfov_deg"] < 60 and 35 < _fov35["vfov_deg"] < 42
+          and stereo_depth_budget()["within_budget"] is True)
+    _capture = camera_capture_plan("NIST")
+    check("camera capture plan ties NIST geo + Street View pano",
+          _capture["body"] == "NIST"
+          and _capture["streetview_pano"] == pano_id_for("NIST")
+          and _capture["lat"] == _nist_geo["lat"])
+    check("SIx cycle reports media readiness, no hardware accessed",
+          _cycle["media"]["voice_ready"] is True
+          and _cycle["media"]["bluetooth_ready"] is True
+          and _cycle["media"]["camera_ready"] is True
+          and _cycle["media"]["hardware_accessed"] is False
+          and next(e for e in _cycle["ledger"]
+                   if isinstance(e["data"], dict)
+                   and e["data"].get("state") == "RESPONDING")
+          ["data"]["media"]["voice_ready"] is True)
 
     passed = sum(1 for _, ok in checks if ok)
     for name, ok in checks:
@@ -2110,6 +2953,16 @@ def demo():
           f"pitch {nist_sv['pov']['pitch']} status {nist_sv['status']}")
     print(f"Perfect Map: {len(build_markers())} markers, "
           f"overall fit zoom {fit_bounds()['zoom']}, KmlLayer {KML_LAYER_URL}")
+    _voice_demo = parse_voice_command("ACD scan RSA-2048 and AES-256")
+    _bt_demo = bluetooth_security_assessment()
+    _cam_demo = estimate_storage("8K DCI", 24, "RAW")
+    print(f"Media layer: voice intent '{_voice_demo['mode']}' "
+          f"(confidence {_voice_demo['confidence']}), "
+          f"{len(VOICE_PRESETS)} speaker presets, "
+          f"Bluetooth weakest pairing {_bt_demo['weakest']['verdict']} "
+          f"({_bt_demo['weakest']['name']}), "
+          f"8K DCI 24fps RAW storage {_cam_demo['gb_per_hour']} GB/hour "
+          f"(models only - no hardware accessed)")
     print()
     return run_checks()
 
@@ -2119,9 +2972,10 @@ def main(argv=None):
     parser.add_argument("mode", nargs="?", default="demo",
                         choices=["demo", "tree", "checks", "scan", "plan", "qkd", "qrng", "hndl",
                                  "earth", "kml", "distance", "decide", "six", "ledger",
-                                 "images", "recommend", "compose", "streetview", "map"])
+                                 "images", "recommend", "compose", "streetview", "map",
+                                 "voice", "speaker", "audio", "bluetooth", "camera"])
     parser.add_argument("body_arg", nargs="?", default=None,
-                        help="Optional body name (streetview single-body mode)")
+                        help="Optional body name (streetview) or transcript (voice)")
     parser.add_argument("--scope", default="all", choices=["all", "national", "international"])
     parser.add_argument("--html", action="store_true",
                         help="Generate standalone HTML for streetview / map modes")
@@ -2135,6 +2989,14 @@ def main(argv=None):
     parser.add_argument("--count", type=int, default=3, help="Images to include in compose mode")
     parser.add_argument("--algos", default=",".join(DEMO_INVENTORY),
                         help="Comma-separated algorithm list for scan/plan")
+    parser.add_argument("--demo", action="store_true",
+                        help="Run the built-in demo transcript for voice mode")
+    parser.add_argument("--say", default=None,
+                        help="Text for speaker mode to turn into a speech plan")
+    parser.add_argument("--preset", default="acd-narrator",
+                        help="Voice preset id for speaker mode")
+    parser.add_argument("--plan", dest="plan_body", default=None,
+                        help="Body name for camera capture-plan mode")
     parser.add_argument("--eve", action="store_true", help="Add an eavesdropper to the QKD run")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--shelf-life", type=float, default=10)
@@ -2226,6 +3088,14 @@ def main(argv=None):
         sv = cycle["streetview"]
         print(f"Street View: ready ({sv['bodies']} panoramas, "
               f"sample pano {sv['sample_pano']}, embed mode: {sv['embed_mode']})")
+        media = cycle["media"]
+        print(f"Media: voice ready={media['voice_ready']}, "
+              f"speaker ready={media['speaker_ready']}, "
+              f"audio ready={media['audio_ready']}, "
+              f"Bluetooth ready={media['bluetooth_ready']} "
+              f"(synthetic scan), 3D 8K camera ready={media['camera_ready']} "
+              f"(spec/plans only), hardware accessed="
+              f"{media['hardware_accessed']}")
         return 0
     if args.mode == "ledger":
         cycle = run_six_cycle(algos)
@@ -2296,6 +3166,109 @@ def main(argv=None):
                 print(page, end="")
             return 0
         print(render_map_summary(), end="")
+        return 0
+    if args.mode == "voice":
+        transcript = args.body_arg
+        if args.demo or not transcript:
+            transcript = "ACD scan RSA-2048 and AES-256"
+            print(f"Demo transcript: {transcript}")
+        route = route_voice_command(transcript)
+        parsed = route["parsed"]
+        print(f"wake_detected: {parsed['wake_detected']} "
+              f"(phrase: {parsed['wake_phrase']})")
+        print(f"mode: {parsed['mode']} | status: {parsed['status']} | "
+              f"confidence: {parsed['confidence']} "
+              f"({parsed['confidence_level']})")
+        print(f"slots: {parsed['slots']}")
+        print(f"SIx route: {' -> '.join(route['states'])}")
+        print(f"reply: {route['reply_text']}")
+        print(f"note: {MEDIA_HONESTY_NOTE}")
+        return 0
+    if args.mode == "speaker":
+        if args.say:
+            plan_out = build_speech_plan(args.say, preset_id=args.preset)
+            for k in ("preset", "language", "rate", "pitch", "volume",
+                      "sentences"):
+                print(f"{k}: {plan_out[k]}")
+            print(f"ssml: {plan_out['ssml']}")
+            print(f"note: {plan_out['note']}")
+            return 0
+        for preset in VOICE_PRESETS:
+            print(f"{preset['id']:<14} {preset['name']:<14} "
+                  f"{preset['language']} {preset['gender_style']:<9} "
+                  f"rate={preset['rate']} pitch={preset['pitch']} "
+                  f"volume={preset['volume']}")
+        verdict = speak_verdict(algos)
+        print(f"verdict speech plan: {verdict['text']}")
+        print(f"note: {verdict['note']}")
+        return 0
+    if args.mode == "audio":
+        out_path = args.out or "acd-tone.wav"
+        samples = generate_tone_samples(440, 1.0, 16000)
+        write_wav(out_path, samples, sample_rate=16000)
+        info = analyse_wav(out_path)
+        for k in ("format", "path", "sample_rate", "channels", "bit_depth",
+                  "duration_seconds", "rms", "peak", "rms_dbfs",
+                  "silence_ratio", "estimated_lufs"):
+            print(f"{k}: {info[k]}")
+        print("formats: " + ", ".join(
+            f"{f['format']} ~{f['typical_bitrate_kbps']} kbps"
+            for f in AUDIO_FORMATS))
+        loud = loudness_check(info["estimated_lufs"], "podcast")
+        print(f"loudness vs podcast target: {loud}")
+        print(f"pipeline: {audio_pipeline_spec()['input_profile']} -> "
+              f"recognition -> {audio_pipeline_spec()['output_profile']}")
+        return 0
+    if args.mode == "bluetooth":
+        print("SYNTHETIC scan (no radio accessed):")
+        for device in bluetooth_synthetic_scan():
+            print(f"{device['name']:<20} {device['address']} "
+                  f"{device['transport']:<7} RSSI {device['rssi_dbm']} dBm "
+                  f"~{device['distance_m']} m connectable="
+                  f"{device['connectable']} services={device['services']}")
+        assessment = bluetooth_security_assessment()
+        for row in assessment["devices"]:
+            print(f"{row['name']:<20} pairing={row['method']:<18} "
+                  f"verdict={row['verdict']} mitm={row['mitm_protection']}")
+        print(f"weakest: {assessment['weakest']['name']} "
+              f"({assessment['weakest']['verdict']})")
+        print(f"strongest: {assessment['strongest']['name']} "
+              f"({assessment['strongest']['verdict']})")
+        print(f"note: {assessment['note']}")
+        return 0
+    if args.mode == "camera":
+        if args.plan_body:
+            capture = camera_capture_plan(args.plan_body)
+            if capture is None:
+                print(f"error: unknown body: {args.plan_body}")
+                return 1
+            for k in ("body", "city", "country", "lat", "lon",
+                      "streetview_pano", "streetview_heading", "resolution",
+                      "fps", "codec", "color_pipeline", "stabilization"):
+                print(f"{k}: {capture[k]}")
+            print(f"storage: {capture['storage']}")
+            print(f"stereo: {capture['stereo']}")
+            print(f"fov_35mm: {capture['fov_35mm']}")
+            print(f"shot_list: {capture['shot_list']}")
+            print(f"note: {capture['note']}")
+            return 0
+        spec = camera_spec_summary()
+        for name, res in spec["resolutions"].items():
+            print(f"{name:<8} {res['width']}x{res['height']}")
+        print("frame rates: " + ", ".join(
+            f"{fps} ({label})" for fps, label in
+            spec["frame_rates"].items()))
+        print("color pipelines: " + ", ".join(
+            f"{c['name']} {c['bit_depth']}-bit"
+            for c in spec["color_pipelines"]))
+        for codec in ("RAW", "ProRes 422 HQ", "H.265"):
+            est = estimate_storage("8K DCI", 24, codec)
+            print(f"8K DCI 24fps {codec:<13} {est['mb_per_s']} MB/s, "
+                  f"{est['gb_per_hour']} GB/hour, "
+                  f"{est['card_capacity_minutes']} min per "
+                  f"{est['card_capacity_gb']} GB card")
+        print(f"stereo depth budget (65mm baseline): {stereo_depth_budget()}")
+        print(f"note: {MEDIA_HONESTY_NOTE}")
         return 0
     return 0 if demo() else 1
 

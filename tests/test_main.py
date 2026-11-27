@@ -130,7 +130,7 @@ def test_hndl_mosca_safe():
 def test_run_checks_passes(capsys):
     assert main.run_checks() is True
     out = capsys.readouterr().out
-    assert "CHECKS 72/72" in out
+    assert "CHECKS 88/88" in out
 
 
 # --- Merge 1: Google Earth layer ---
@@ -541,3 +541,204 @@ def test_six_cycle_streetview_readiness():
                   if isinstance(e["data"], dict)
                   and e["data"].get("event") == "plan_emitted"]
     assert responding and responding[0]["data"]["streetview_ready"] is True
+
+
+# --- Merge 7: media + sensing layer (models / specs / plans, no hardware) ---
+
+def test_voice_wake_and_scan_slots():
+    r = main.parse_voice_command("ACD scan RSA-2048 and AES-256")
+    assert r["wake_detected"] is True and r["wake_phrase"] == "acd"
+    assert r["mode"] == "scan" and r["status"] == "matched"
+    assert r["slots"]["algorithms"] == ["RSA-2048", "AES-256"]
+    assert r["confidence_level"] == "exact"
+
+
+def test_voice_phrase_mapping_six_modes():
+    cases = {
+        "hey ACD show the structure tree": "tree",
+        "ok ACD run the migration plan": "plan",
+        "ACD decide now": "decide",
+        "hey ACD open google earth": "earth",
+        "ACD show docker images": "images",
+        "ok ACD show the audit ledger": "ledger",
+        "ACD run checks": "checks",
+        "hey ACD open street view for NIST": "streetview",
+    }
+    for phrase, mode in cases.items():
+        r = main.parse_voice_command(phrase)
+        assert r["mode"] == mode and r["status"] == "matched", phrase
+
+
+def test_voice_body_and_distance_slots():
+    r = main.parse_voice_command("hey ACD open street view for NIST")
+    assert r["slots"]["body"] == "NIST"
+    d = main.parse_voice_command("ACD distance NIST to ETSI")
+    assert d["mode"] == "distance"
+    assert d["slots"]["from_body"] == "NIST"
+    assert d["slots"]["to_body"] == "ETSI" and d["slots"]["km"] > 5000
+
+
+def test_voice_unknown_command_path():
+    r = main.parse_voice_command("blorp the frobnicate")
+    assert r["status"] == "no_match" and r["mode"] is None
+    assert r["confidence"] == 0.0 and r["confidence_level"] == "unknown"
+
+
+def test_voice_route_runs_through_six_states():
+    route = main.route_voice_command("ACD scan RSA-2048")
+    assert route["states"] == ["IDLE", "LISTENING", "THINKING",
+                               "RESPONDING", "IDLE"]
+    assert "scan" in route["reply_text"]
+    assert route["speech_plan"]["ssml"].startswith("<speak")
+
+
+def test_diarization_counts():
+    d = main.diarize_transcript(
+        "SPEAKER 1: welcome to the briefing today\n"
+        "DARION: scan everything twice please\n"
+        "SPEAKER 1: copy that")
+    assert d["speakers"]["SPEAKER 1"]["words"] == 7
+    assert d["speakers"]["DARION"]["words"] == 4
+    assert d["total_words"] == 11 and len(d["turns"]) == 3
+
+
+def test_voiceprint_match_and_unknown():
+    hit = main.match_voiceprint(main.ENROLLED_VOICEPRINTS["Analyst (demo)"])
+    assert hit["matched"] is True and hit["speaker"] == "Analyst (demo)"
+    assert hit["synthetic_demo_data"] is True
+    assert hit["biometric_identification"] is False
+    miss = main.match_voiceprint([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    assert miss["speaker"] == "UNKNOWN" and miss["matched"] is False
+    assert main.cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
+
+
+def test_speech_plan_clamping_and_escaping():
+    plan = main.build_speech_plan("Hello <world> & friends.",
+                                  rate=9, pitch=-99, volume=500)
+    assert plan["rate"] == 2.0 and plan["pitch"] == -12
+    assert plan["volume"] == 100
+    assert "&lt;world&gt;" in plan["ssml"] and "<world>" not in plan["ssml"]
+    assert plan["hardware_accessed"] is False
+
+
+def test_speech_queue_fifo_and_verdict():
+    queue = main.SpeechQueue()
+    queue.enqueue(main.build_speech_plan("First."))
+    queue.enqueue(main.build_speech_plan("Second."))
+    assert len(queue) == 2
+    assert queue.next()["text"] == "First."
+    assert queue.peek()["text"] == "Second."
+    verdict = main.speak_verdict(["ML-KEM-1024", "AES-256"])
+    assert "decision: GO" in verdict["text"]
+
+
+def test_wav_round_trip_analysis(tmp_path):
+    path = str(tmp_path / "tone.wav")
+    main.write_wav(path, main.generate_tone_samples(440, 1.0, 16000),
+                   sample_rate=16000)
+    info = main.analyse_wav(path)
+    assert info["duration_seconds"] == 1.0
+    assert info["sample_rate"] == 16000 and info["channels"] == 1
+    assert info["bit_depth"] == 16
+    assert 0.3 < info["rms"] < 0.4 and 0.49 < info["peak"] < 0.51
+    assert info["rms_dbfs"] < 0 and info["silence_ratio"] < 0.1
+
+
+def test_audio_formats_and_loudness():
+    formats = {f["format"] for f in main.AUDIO_FORMATS}
+    assert formats == {"WAV", "FLAC", "MP3", "AAC", "Opus"}
+    assert main.loudness_check(-16.0, "podcast")["within_tolerance"] is True
+    assert main.loudness_check(-14.0, "streaming")["target_lufs"] == -14.0
+    assert main.loudness_check(-30.0, "podcast")["within_tolerance"] is False
+    pipeline = main.audio_pipeline_spec()
+    assert pipeline["input_profile"]["hardware_accessed"] is False
+    assert "scan" in pipeline["recognition"]["grammar_modes"]
+
+
+def test_bluetooth_rssi_distance_monotonic():
+    distances = [main.estimate_distance_m(r) for r in (-40, -60, -80, -100)]
+    assert distances == sorted(distances)
+    assert all(d > 0 for d in distances)
+
+
+def test_bluetooth_pairing_security_flags():
+    weak = main.assess_pairing("just_works")
+    assert weak["verdict"] == "WEAK" and weak["mitm_protection"] is False
+    strong = main.assess_pairing("numeric_comparison")
+    assert strong["verdict"] == "STRONG"
+    assert strong["mitm_protection"] is True
+    assessment = main.bluetooth_security_assessment()
+    assert assessment["weakest"]["verdict"] == "WEAK"
+    assert assessment["strongest"]["verdict"] == "STRONG"
+    assert assessment["synthetic_scan"] is True
+
+
+def test_bluetooth_scan_shape_and_bonding_store():
+    import re
+    devices = main.bluetooth_synthetic_scan()
+    assert len(devices) == 5
+    for d in devices:
+        assert re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}", d["address"])
+        assert d["synthetic"] is True and d["distance_m"] > 0
+    uuids = {s["uuid"] for s in main.BLUETOOTH_SERVICES}
+    assert {"0x180D", "0x180F", "0x180A"} <= uuids
+    store = main.BondingStore()
+    store.bond(devices[0])
+    assert len(store) == 1
+    assert store.get(devices[0]["address"])["assessment"]["verdict"] == "STRONG"
+    assert store.remove(devices[0]["address"]) is True
+
+
+def test_camera_storage_math():
+    raw = main.estimate_storage("8K DCI", 24, "RAW")
+    h265 = main.estimate_storage("8K DCI", 24, "H.265")
+    assert raw["width"] == 8192 and raw["height"] == 4320
+    assert raw["gb_per_hour"] > h265["gb_per_hour"] > 0
+    assert raw["mb_per_s"] > h265["mb_per_s"]
+    uhd = main.estimate_storage("8K UHD", 24, "RAW")
+    assert uhd["width"] == 7680 and uhd["gb_per_hour"] < raw["gb_per_hour"]
+    slow = main.estimate_storage("8K DCI", 120, "RAW")
+    assert slow["frame_rate_class"] == "slow motion"
+    assert slow["gb_per_hour"] > raw["gb_per_hour"]
+
+
+def test_camera_fov_and_stereo_budget():
+    fov = main.camera_fov(35)
+    assert 50 < fov["hfov_deg"] < 60 and 35 < fov["vfov_deg"] < 42
+    wide = main.camera_fov(16)
+    assert wide["hfov_deg"] > fov["hfov_deg"]
+    frame = main.framing_at_distance(35, 10.0)
+    assert frame["frame_width_m"] > frame["frame_height_m"] > 0
+    budget = main.stereo_depth_budget()
+    assert budget["within_budget"] is True
+    assert budget["max_parallax_deg"] <= budget["budget_deg"]
+    tight = main.stereo_depth_budget(interaxial_mm=200, nearest_m=0.5,
+                                     convergence_m=2.0, farthest_m=8.0)
+    assert tight["within_budget"] is False
+
+
+def test_camera_capture_plan_references_body_and_pano():
+    plan = main.camera_capture_plan("NIST")
+    nist = main.get_geo("NIST")
+    assert plan["body"] == "NIST"
+    assert plan["lat"] == nist["lat"] and plan["lon"] == nist["lon"]
+    assert plan["streetview_pano"] == main.pano_id_for("NIST")
+    assert plan["hardware_accessed"] is False
+    assert main.camera_capture_plan("no such body") is None
+    spec = main.camera_spec_summary()
+    assert spec["resolutions"]["8K DCI"]["width"] == 8192
+    assert {c["name"] for c in spec["color_pipelines"]} >= {"RAW", "LOG",
+                                                            "HDR10", "HLG"}
+
+
+def test_six_cycle_media_readiness():
+    cycle = main.run_six_cycle(["ML-KEM-1024", "AES-256"])
+    media = cycle["media"]
+    assert media["voice_ready"] is True and media["speaker_ready"] is True
+    assert media["audio_ready"] is True
+    assert media["bluetooth_ready"] is True and media["camera_ready"] is True
+    assert media["hardware_accessed"] is False
+    responding = [e for e in cycle["ledger"]
+                  if isinstance(e["data"], dict)
+                  and e["data"].get("event") == "plan_emitted"]
+    assert responding[0]["data"]["media"]["camera_ready"] is True
