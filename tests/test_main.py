@@ -130,7 +130,7 @@ def test_hndl_mosca_safe():
 def test_run_checks_passes(capsys):
     assert main.run_checks() is True
     out = capsys.readouterr().out
-    assert "CHECKS 54/54" in out
+    assert "CHECKS 72/72" in out
 
 
 # --- Merge 1: Google Earth layer ---
@@ -302,3 +302,242 @@ def test_compose_snippet_contains_images():
     assert "services:" in snippet
     assert "credkellar/quantumrandom-lab:latest" in snippet
     assert "credkellar/bosonsampling-lab:latest" in snippet
+
+
+# --- Street View Service layer (Merge 5) -----------------------------------
+
+import pytest
+
+
+def test_bearing_and_heading_wrap():
+    # Washington DC -> NYC bears roughly north-east (~53 degrees)
+    dc = main.get_geo("White House / ONCD")
+    nyc = main.get_geo("IEEE")
+    b = main.bearing_deg(dc["lat"], dc["lon"], nyc["lat"], nyc["lon"])
+    assert 30 <= b <= 80
+    assert main.wrap_heading(360) == 0.0
+    assert main.wrap_heading(725) == 5.0
+    assert main.wrap_heading(-90) == 270.0
+
+
+def test_pitch_clamp():
+    assert main.clamp_pitch(45) == 45.0
+    assert main.clamp_pitch(91) == 90.0
+    assert main.clamp_pitch(-91) == -90.0
+
+
+def test_get_panorama_ok_all_bodies_links_real_neighbours():
+    names = {b["name"] for b in main.all_bodies_with_geo()}
+    for body in main.all_bodies_with_geo():
+        result = main.sv_get_panorama(
+            location={"lat": body["lat"], "lng": body["lon"]},
+            radius=50, source="outdoor")
+        assert result["status"] == "OK"
+        data = result["data"]
+        # A location lookup resolves to the nearest body; bodies that share
+        # an HQ coordinate (e.g. two London anchors) resolve to that point.
+        matched = main.find_body(result["matched_body"])
+        assert (matched["lat"], matched["lon"]) == (body["lat"], body["lon"])
+        assert data["location"]["pano"] == main.pano_id_for(matched["name"])
+        assert len(data["links"]) == 2
+        for link in data["links"]:
+            assert link["description"] in names
+            assert link["description"] != matched["name"]
+            assert 0 <= link["heading"] < 360
+            assert link["pano"] == main.pano_id_for(link["description"])
+
+
+def test_get_panorama_zero_results_open_ocean():
+    result = main.sv_get_panorama(location={"lat": -25.0, "lng": -140.0})
+    assert result["status"] == "ZERO_RESULTS"
+    assert result["data"] is None
+
+
+def test_get_panorama_unknown_error_and_bad_enums():
+    assert main.sv_get_panorama()["status"] == "UNKNOWN_ERROR"
+    with pytest.raises(ValueError):
+        main.sv_get_panorama(location={"lat": 0, "lng": 0}, source="space")
+    with pytest.raises(ValueError):
+        main.sv_get_panorama(location={"lat": 0, "lng": 0}, preference="closest")
+
+
+def test_panorama_options_defaults_and_validation():
+    opts = main.validate_panorama_options({"pov": {"heading": 370, "pitch": 200}})
+    assert opts["pov"] == {"heading": 10.0, "pitch": 90.0}
+    assert opts["clickToGo"] is True and opts["linksControl"] is True
+    assert opts["motionTracking"] is True and opts["zoomControl"] is True
+    nist = main.find_body("NIST")
+    defaults = main.default_panorama_options(nist)
+    assert defaults["pano"] == main.pano_id_for("NIST")
+    assert defaults["pov"]["pitch"] == 10.0
+    with pytest.raises(ValueError):
+        main.validate_panorama_options({"bogusOption": True})
+
+
+def test_custom_provider_round_trip():
+    pano = main.pano_id_for("ETSI")
+    result = main.sv_get_panorama_by_provider(pano)
+    assert result["status"] == "OK"
+    assert result["data"]["location"]["shortDescription"] == "ETSI"
+    # and the same pano resolves through the service entry point too
+    assert main.sv_get_panorama(pano=pano)["status"] == "OK"
+    assert main.sv_get_panorama_by_provider("acd-nope")["status"] == "ZERO_RESULTS"
+
+
+def test_panorama_model_events_on_pov_and_pano_change():
+    model = main.StreetViewPanoramaModel(main.find_body("NIST"))
+    seen = []
+    for event in main.SV_EVENTS:
+        model.on(event, lambda detail, e=event: seen.append(e))
+    model.set_pov(heading=400, pitch=45)
+    assert model.get_pov() == {"heading": 40.0, "pitch": 45.0}
+    model.set_pano(main.pano_id_for("ETSI"))
+    assert model.get_pano() == main.pano_id_for("ETSI")
+    model.set_visible(False)
+    for expected in ("pov_changed", "pano_changed", "links_changed",
+                     "position_changed", "visible_changed"):
+        assert expected in seen
+    # no change -> no new pov event
+    before = len(model.event_log)
+    model.set_pov(heading=40, pitch=45)
+    assert len(model.event_log) == before
+
+
+def test_streetview_html_all_bodies_placeholder():
+    page = main.build_streetview_html()
+    for body in main.all_bodies_with_geo():
+        assert body["name"] in page
+    assert main.MAPS_KEY_PLACEHOLDER == "YOUR_API_KEY"
+    assert "YOUR_API_KEY" in page
+    assert "StreetViewService" in page and "initPanorama" in page
+    assert "google.maps.StreetViewSource.OUTDOOR" in page
+    assert "<redacted>" not in page
+
+
+def test_streetview_for_body_record():
+    rec = main.streetview_for_body("NIST")
+    assert rec["status"] == "OK" and rec["body"] == "NIST"
+    assert rec["pov"]["pitch"] == 10.0
+    assert len(rec["links"]) == 2
+    assert "HTTPS" in rec["motion_tracking_note"]
+    assert main.streetview_for_body("no such body") is None
+
+
+# --- Perfect Map layer (Merge 6) -------------------------------------------
+
+
+def test_map_markers_count_and_shape():
+    markers = main.build_markers()
+    assert len(markers) == 30
+    for marker in markers:
+        assert marker["label"] == "ACD"
+        assert marker["draggable"] is False
+        assert marker["animation"] in main.MARKER_ANIMATIONS
+        assert marker["title"] == marker["body"]
+        assert marker["title"] in marker["info"]
+
+
+def test_map_bounds_contain_all_bodies():
+    bounds = main.compute_bounds()
+    for body in main.all_bodies_with_geo():
+        assert bounds["south"] <= body["lat"] <= bounds["north"]
+        assert bounds["west"] <= body["lon"] <= bounds["east"]
+    fit = main.fit_bounds()
+    assert fit["count"] == 30
+    assert fit["center"] == main.bounds_center(bounds)
+
+
+def test_map_region_zooms_sane():
+    for region in ("North America", "Europe", "Asia-Pacific"):
+        fit = main.fit_bounds(region)
+        assert fit["count"] >= 3
+        assert 2 <= fit["zoom"] <= 12
+    with pytest.raises(ValueError):
+        main.fit_bounds("Atlantis")
+
+
+def test_map_options_defaults_and_validation():
+    opts = main.validate_map_options()
+    assert opts["mapTypeId"] == "roadmap"
+    assert opts["mapTypeControlOptions"]["style"] in main.MAP_TYPE_CONTROL_STYLES
+    assert set(opts["mapTypeControlOptions"]["mapTypeIds"]) == set(main.MAP_TYPES)
+    assert opts["streetViewControl"] is True and opts["fullscreenControl"] is True
+    clamped = main.validate_map_options({"zoom": 99})
+    assert clamped["zoom"] == clamped["maxZoom"]
+    with pytest.raises(ValueError):
+        main.validate_map_options({"mapTypeId": "moon"})
+    with pytest.raises(ValueError):
+        main.validate_map_options({"gestureHandling": "wild"})
+    with pytest.raises(ValueError):
+        main.validate_map_options({"nope": 1})
+
+
+def test_map_layers_model():
+    layers = main.map_layers()
+    assert layers["traffic"]["type"] == "TrafficLayer"
+    assert layers["transit"]["type"] == "TransitLayer"
+    assert layers["bicycling"]["type"] == "BicyclingLayer"
+    url = layers["kml"]["url"]
+    assert url.startswith("https://") and url.endswith("earth/ACD-QUANTUM.kml")
+    overlay = layers["groundOverlay"]
+    nist = main.get_geo("NIST")
+    assert overlay["bounds"]["south"] < nist["lat"] < overlay["bounds"]["north"]
+    assert overlay["bounds"]["west"] < nist["lon"] < overlay["bounds"]["east"]
+
+
+def test_map_model_events_on_zoom_center_and_type():
+    model = main.MapModel()
+    seen = []
+    for event in main.MAP_EVENTS:
+        model.on(event, lambda detail, e=event: seen.append(e))
+    model.set_center(40.0, -100.0)
+    model.set_zoom(6)
+    model.set_map_type_id("terrain")
+    model.click(40.0, -100.0)
+    model.begin_drag()
+    model.end_drag()
+    for expected in ("center_changed", "zoom_changed", "bounds_changed",
+                     "maptypeid_changed", "click", "dragstart", "drag", "dragend"):
+        assert expected in seen
+    assert model.get_zoom() == 6 and model.get_map_type_id() == "terrain"
+    with pytest.raises(ValueError):
+        model.set_map_type_id("moon")
+
+
+def test_combined_map_html():
+    page = main.build_map_html()
+    assert "google.maps.Map" in page
+    assert "StreetViewPanorama" in page
+    assert "setStreetView" in page
+    assert "KmlLayer" in page and main.KML_LAYER_URL in page
+    for body in main.all_bodies_with_geo():
+        assert body["name"] in page
+    assert "YOUR_API_KEY" in page
+    assert "<redacted>" not in page
+
+
+def test_geocode_round_trips():
+    fwd = main.geocode_forward("NIST")
+    assert fwd["status"] == "OK"
+    loc = fwd["results"][0]["geometry"]["location"]
+    nist = main.get_geo("NIST")
+    assert loc["lat"] == nist["lat"] and loc["lng"] == nist["lon"]
+    rev = main.geocode_reverse(loc["lat"], loc["lng"])
+    assert rev["results"][0]["body"] == "NIST"
+    assert rev["results"][0]["formatted_address"].startswith("NIST — ")
+    assert main.geocode_forward("no such place")["status"] == "ZERO_RESULTS"
+    # a point near ETSI reverse-geocodes to ETSI
+    etsi = main.get_geo("ETSI")
+    assert main.geocode_reverse(etsi["lat"] + 0.01,
+                                etsi["lon"])["results"][0]["body"] == "ETSI"
+
+
+def test_six_cycle_streetview_readiness():
+    cycle = main.run_six_cycle(["ML-KEM-1024", "AES-256"])
+    assert cycle["streetview"]["ready"] is True
+    assert cycle["streetview"]["bodies"] == 30
+    assert cycle["streetview"]["sample_pano"] == main.pano_id_for("NIST")
+    responding = [e for e in cycle["ledger"]
+                  if isinstance(e["data"], dict)
+                  and e["data"].get("event") == "plan_emitted"]
+    assert responding and responding[0]["data"]["streetview_ready"] is True

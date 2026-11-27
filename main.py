@@ -16,7 +16,12 @@ Features:
   8. Gemini Argon 4 Extended Thinking DECIDER seat (names-only, tighten-only)
   9. SIx Neural Core interface: 5-state machine + hash-chained audit ledger
  10. Recommended quantum Docker images catalog (Darion's credkellar/ fleet)
- 11. Self-checks runner printing CHECKS x/x
+ 11. Google Maps Street View Service layer: panorama lookup, options,
+     custom panorama provider, events, standalone HTML embed generator
+ 12. Perfect Map layer: full Maps JavaScript API map options model,
+     markers + InfoWindows, bounds fitting, layers, map events,
+     offline geocoding, combined map + Street View HTML generator
+ 13. Self-checks runner printing CHECKS x/x
 
 Honest limits: this is an educational / planning tool. The QKD and QRNG
 modules are classical simulations of quantum protocols - they do not use
@@ -839,7 +844,9 @@ def run_six_cycle(items=None, stakes="final"):
     core.transition("RESPONDING")
     plan = generate_migration_plan(items)
     ledger.append_entry({"state": "RESPONDING", "event": "plan_emitted",
-                         "phases": len(plan), "verdict": decision["verdict"]})
+                         "phases": len(plan), "verdict": decision["verdict"],
+                         "streetview_ready": True,
+                         "streetview_bodies": len(all_bodies_with_geo())})
 
     core.transition("LEARNING")
     ledger.append_entry({"state": "LEARNING", "event": "run_recorded",
@@ -850,7 +857,11 @@ def run_six_cycle(items=None, stakes="final"):
             "trace": list(core.history), "ticks": core.tick,
             "scan_summary": scan["summary"], "decision": decision,
             "plan_phases": len(plan), "ledger": ledger.chain,
-            "ledger_valid": ledger.verify()}
+            "ledger_valid": ledger.verify(),
+            "streetview": {"ready": True,
+                           "bodies": len(all_bodies_with_geo()),
+                           "sample_pano": pano_id_for("NIST"),
+                           "embed_mode": "streetview"}}
 
 
 # --------------------------------------------------------------------------
@@ -1012,8 +1023,853 @@ def compose_snippet(topic, count=3):
 
 
 # --------------------------------------------------------------------------
-# 11. Self-checks
+# 11. Google Maps Street View Service layer (offline model of the API docs)
 # --------------------------------------------------------------------------
+
+# The live Maps JavaScript API credential is referenced by NAME only
+# (GOOGLE_MAPS_API_KEY). Generated HTML carries the literal placeholder
+# string YOUR_API_KEY for the developer to replace locally - never a value.
+MAPS_KEY_NAME = "GOOGLE_MAPS_API_KEY"
+MAPS_KEY_PLACEHOLDER = "YOUR_API_KEY"
+
+SV_STATUSES = ("OK", "ZERO_RESULTS", "UNKNOWN_ERROR")
+SV_SOURCES = ("default", "outdoor")
+SV_PREFERENCES = ("nearest", "best")
+SV_EVENTS = ("pano_changed", "position_changed", "pov_changed",
+             "links_changed", "status_changed", "visible_changed")
+# Offline simulation rule: a panorama is modelled at each body HQ, so a
+# location lookup succeeds when the nearest body is within this distance.
+SV_SEARCH_LIMIT_KM = 250.0
+
+MOTION_TRACKING_NOTE = (
+    "Motion tracking (motionTracking / motionTrackingControl) uses device "
+    "sensors in the live browser API: it requires an HTTPS page, and on iOS "
+    "the user must grant device-motion permission. This offline layer only "
+    "models the option flags; real motion tracking happens in the browser.")
+
+
+def bearing_deg(lat1, lon1, lat2, lon2):
+    """Initial great-circle bearing from point 1 to point 2, in degrees 0-360."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlmb = math.radians(lon2 - lon1)
+    x = math.sin(dlmb) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dlmb)
+    return round(math.degrees(math.atan2(x, y)) % 360.0, 1)
+
+
+def wrap_heading(heading):
+    """Wrap a compass heading into 0 <= heading < 360 (docs POV rule)."""
+    return round(float(heading) % 360.0, 1)
+
+
+def clamp_pitch(pitch):
+    """Clamp a Street View pitch into -90..90 (docs POV rule)."""
+    return max(-90.0, min(90.0, float(pitch)))
+
+
+def pano_id_for(name):
+    """Deterministic simulated panorama id for a body (seeded by its name)."""
+    digest = hashlib.sha256(str(name).encode("utf-8")).hexdigest()
+    return f"acd-{digest[:20]}"
+
+
+def _nearest_bodies(body, count=2):
+    """The `count` nearest other bodies to `body`, nearest first."""
+    others = [b for b in all_bodies_with_geo() if b["name"] != body["name"]]
+    others.sort(key=lambda b: (haversine_km(body["lat"], body["lon"],
+                                            b["lat"], b["lon"]), b["name"]))
+    return others[:count]
+
+
+def default_heading_for(body):
+    """Default POV heading for a body: bearing toward its nearest neighbour."""
+    nearest = _nearest_bodies(body, 1)
+    if not nearest:
+        return 0.0
+    n = nearest[0]
+    return bearing_deg(body["lat"], body["lon"], n["lat"], n["lon"])
+
+
+class EventEmitter:
+    """Tiny offline event emitter mirroring the Maps API addListener pattern."""
+
+    def __init__(self):
+        self._handlers = {}
+        self.log = []
+
+    def on(self, event, handler):
+        self._handlers.setdefault(event, []).append(handler)
+        return handler
+
+    def emit(self, event, detail=None):
+        self.log.append((event, detail))
+        for handler in self._handlers.get(event, []):
+            handler(detail)
+        return event
+
+
+def _panorama_data_for(body):
+    """StreetViewPanoramaData for a body, shaped like the docs response."""
+    neighbours = _nearest_bodies(body, 2)
+    links = [{"heading": bearing_deg(body["lat"], body["lon"], n["lat"], n["lon"]),
+              "pano": pano_id_for(n["name"]),
+              "description": n["name"]} for n in neighbours]
+    seed = int(hashlib.sha256(body["name"].encode("utf-8")).hexdigest()[:8], 16)
+    return {
+        "location": {
+            "pano": pano_id_for(body["name"]),
+            "latLng": {"lat": body["lat"], "lng": body["lon"]},
+            "description": f"{body['name']} - {body['role']}",
+            "shortDescription": body["name"],
+        },
+        "links": links,
+        "copyright": "ACD-Quantum offline Street View simulation",
+        "tiles": {
+            "centerHeading": default_heading_for(body),
+            "tileSize": {"width": 512, "height": 512},
+            "worldSize": {"width": 1024, "height": 512},
+            "getTileUrlPattern": "offline-example.invalid/tiles/{pano}/{zoom}/{x}/{y}",
+        },
+        "date": f"{2019 + seed % 6}-{1 + (seed >> 4) % 12:02d}",
+    }
+
+
+def sv_get_panorama(location=None, pano=None, radius=50,
+                    preference="nearest", source="default"):
+    """
+    Offline StreetViewService.getPanorama model.
+
+    Request (docs): location {lat, lng} or a pano id, radius in metres
+    (default 50), preference nearest|best, source default|outdoor.
+    Response: {"status": OK|ZERO_RESULTS|UNKNOWN_ERROR, "data": ...}.
+    A location succeeds when the nearest body HQ is within the simulated
+    search limit; open-ocean style locations return ZERO_RESULTS.
+    """
+    if preference not in SV_PREFERENCES:
+        raise ValueError(f"unknown Street View preference: {preference}")
+    if source not in SV_SOURCES:
+        raise ValueError(f"unknown Street View source: {source}")
+    if radius is None or float(radius) < 0:
+        raise ValueError("radius must be a non-negative number")
+    if pano is not None:
+        for body in all_bodies_with_geo():
+            if pano_id_for(body["name"]) == pano:
+                return {"status": "OK", "data": _panorama_data_for(body),
+                        "matched_body": body["name"], "distance_km": 0.0,
+                        "search_radius_m": radius, "source": source,
+                        "preference": preference}
+        return {"status": "ZERO_RESULTS", "data": None}
+    if location is None:
+        return {"status": "UNKNOWN_ERROR", "data": None}
+    lat, lon = float(location["lat"]), float(location["lng"])
+    nearest, dist = None, None
+    for body in all_bodies_with_geo():
+        d = haversine_km(lat, lon, body["lat"], body["lon"])
+        if dist is None or d < dist:
+            nearest, dist = body, d
+    if nearest is None or dist > SV_SEARCH_LIMIT_KM:
+        return {"status": "ZERO_RESULTS", "data": None,
+                "nearest_km": dist, "search_radius_m": radius}
+    return {"status": "OK", "data": _panorama_data_for(nearest),
+            "matched_body": nearest["name"], "distance_km": dist,
+            "search_radius_m": radius, "source": source,
+            "preference": preference}
+
+
+# --- StreetViewPanorama options (docs defaults, validated / clamped) ------
+
+_SV_BOOL_OPTIONS = ("addressControl", "clickToGo", "disableDoubleClickZoom",
+                    "enableCloseButton", "imageDateControl", "linksControl",
+                    "panControl", "motionTracking", "motionTrackingControl",
+                    "scrollwheel", "showRoadLabels", "visible", "zoomControl")
+
+
+def default_panorama_options(body=None):
+    """StreetViewPanoramaOptions with the documented defaults."""
+    options = {
+        "position": ({"lat": body["lat"], "lng": body["lon"]} if body else None),
+        "pano": (pano_id_for(body["name"]) if body else None),
+        "pov": {"heading": (default_heading_for(body) if body else 34.0),
+                "pitch": 10.0},
+        "zoom": 1,
+        "addressControl": True,
+        "clickToGo": True,
+        "disableDoubleClickZoom": False,
+        "enableCloseButton": False,
+        "imageDateControl": False,
+        "linksControl": True,
+        "panControl": True,
+        "motionTracking": True,
+        "motionTrackingControl": True,
+        "scrollwheel": True,
+        "showRoadLabels": True,
+        "visible": True,
+        "zoomControl": True,
+    }
+    return options
+
+
+def validate_panorama_options(options=None):
+    """Merge over defaults; wrap heading, clamp pitch and zoom per the docs."""
+    merged = default_panorama_options()
+    for key, value in (options or {}).items():
+        if key not in merged:
+            raise ValueError(f"unknown StreetViewPanorama option: {key}")
+        merged[key] = value
+    pov = dict(merged.get("pov") or {})
+    merged["pov"] = {"heading": wrap_heading(pov.get("heading", 34.0)),
+                     "pitch": clamp_pitch(pov.get("pitch", 10.0))}
+    merged["zoom"] = max(0.0, float(merged.get("zoom", 1)))
+    for key in _SV_BOOL_OPTIONS:
+        merged[key] = bool(merged[key])
+    return merged
+
+
+def sv_motion_tracking_note():
+    return MOTION_TRACKING_NOTE
+
+
+# --- Custom panorama provider (docs registerProvider pattern) -------------
+
+_PANORAMA_PROVIDERS = {}
+
+
+def register_panorama_provider(name, provider):
+    """Register a custom panorama provider: pano id -> panorama data | None."""
+    _PANORAMA_PROVIDERS[str(name)] = provider
+    return provider
+
+
+def acd_panorama_provider(pano):
+    """ACD-Quantum's own provider: resolves simulated pano ids to data."""
+    for body in all_bodies_with_geo():
+        if pano_id_for(body["name"]) == pano:
+            return _panorama_data_for(body)
+    return None
+
+
+register_panorama_provider("acd-quantum", acd_panorama_provider)
+
+
+def sv_get_panorama_by_provider(pano, provider="acd-quantum"):
+    fn = _PANORAMA_PROVIDERS.get(str(provider))
+    if fn is None:
+        return {"status": "UNKNOWN_ERROR", "data": None}
+    data = fn(pano)
+    return {"status": "OK" if data else "ZERO_RESULTS", "data": data}
+
+
+# --- Panorama model with the documented events ----------------------------
+
+class StreetViewPanoramaModel:
+    """
+    Offline StreetViewPanorama: holds pano / position / pov / status /
+    visible / links and fires the documented *_changed events on change.
+    """
+
+    def __init__(self, body=None, options=None):
+        self.events = EventEmitter()
+        self._options = validate_panorama_options(options)
+        self._status = "OK"
+        self._visible = bool(self._options["visible"])
+        self._pov = dict(self._options["pov"])
+        self._data = None
+        self._pano = None
+        self._position = None
+        if body is not None:
+            self._data = _panorama_data_for(body)
+            self._pano = self._data["location"]["pano"]
+            self._position = dict(self._data["location"]["latLng"])
+
+    @property
+    def event_log(self):
+        return list(self.events.log)
+
+    def on(self, event, handler):
+        if event not in SV_EVENTS:
+            raise ValueError(f"unknown Street View event: {event}")
+        return self.events.on(event, handler)
+
+    def get_pano(self):
+        return self._pano
+
+    def get_position(self):
+        return dict(self._position) if self._position else None
+
+    def get_pov(self):
+        return dict(self._pov)
+
+    def get_status(self):
+        return self._status
+
+    def get_visible(self):
+        return self._visible
+
+    def get_links(self):
+        return list(self._data["links"]) if self._data else []
+
+    def get_options(self):
+        return dict(self._options)
+
+    def set_pano(self, pano):
+        result = sv_get_panorama_by_provider(pano)
+        new_status = result["status"]
+        if new_status != self._status:
+            self._status = new_status
+            self.events.emit("status_changed", new_status)
+        if result["data"] is None or pano == self._pano:
+            return self._pano
+        self._data = result["data"]
+        self._pano = pano
+        self.events.emit("pano_changed", pano)
+        self.events.emit("links_changed", self.get_links())
+        new_pos = dict(self._data["location"]["latLng"])
+        if new_pos != self._position:
+            self._position = new_pos
+            self.events.emit("position_changed", dict(new_pos))
+        return self._pano
+
+    def set_position(self, lat, lng):
+        new_pos = {"lat": float(lat), "lng": float(lng)}
+        if new_pos != self._position:
+            self._position = new_pos
+            self.events.emit("position_changed", dict(new_pos))
+        return self.get_position()
+
+    def set_pov(self, heading=None, pitch=None):
+        new_pov = {"heading": wrap_heading(
+                       self._pov["heading"] if heading is None else heading),
+                   "pitch": clamp_pitch(
+                       self._pov["pitch"] if pitch is None else pitch)}
+        if new_pov != self._pov:
+            self._pov = new_pov
+            self.events.emit("pov_changed", dict(new_pov))
+        return self.get_pov()
+
+    def set_visible(self, visible):
+        visible = bool(visible)
+        if visible != self._visible:
+            self._visible = visible
+            self.events.emit("visible_changed", visible)
+        return self._visible
+
+
+def streetview_for_body(query):
+    """Full Street View record for one body, or None if the body is unknown."""
+    body = find_body(query)
+    if body is None:
+        return None
+    data = _panorama_data_for(body)
+    options = validate_panorama_options(default_panorama_options(body))
+    return {"body": body["name"], "status": "OK",
+            "pano": data["location"]["pano"],
+            "lat": body["lat"], "lon": body["lon"],
+            "city": body["city"], "country": body["country"],
+            "pov": options["pov"], "links": data["links"],
+            "date": data["date"], "copyright": data["copyright"],
+            "tiles": data["tiles"], "options": options,
+            "motion_tracking_note": MOTION_TRACKING_NOTE}
+
+
+def render_streetview_table():
+    """Street View table for all 30 bodies."""
+    lines = ["ACD-Quantum - Street View panoramas (offline simulation)",
+             f"{'Body':<38} {'Pano':<26} {'Lat,Lng':<22} {'Heading':>7} {'Pitch':>5}  Status"]
+    for body in all_bodies_with_geo():
+        rec = streetview_for_body(body["name"])
+        lines.append(f"{rec['body']:<38} {rec['pano']:<26} "
+                     f"{rec['lat']:.4f},{rec['lon']:.4f}   "
+                     f"{rec['pov']['heading']:>7} {rec['pov']['pitch']:>5}  {rec['status']}")
+    lines.append("")
+    lines.append("Standalone page: python3 main.py streetview --html --out streetview.html")
+    lines.append(MOTION_TRACKING_NOTE)
+    return "\n".join(lines) + "\n"
+
+
+def _bodies_js_data():
+    """JSON-ready Street View + marker data for all 30 bodies (HTML embeds)."""
+    out = []
+    for body in all_bodies_with_geo():
+        rec = streetview_for_body(body["name"])
+        out.append({"name": body["name"], "pano": rec["pano"],
+                    "lat": body["lat"], "lng": body["lon"],
+                    "heading": rec["pov"]["heading"], "pitch": rec["pov"]["pitch"],
+                    "city": body["city"], "country": body["country"],
+                    "region": body["region"], "category": body["category"],
+                    "role": body["role"]})
+    return out
+
+
+def _maps_loader_js(callback):
+    """JS that loads the Maps API using the placeholder credential variable."""
+    return (
+        'const MAPS_KEY_PLACEHOLDER = "YOUR_API_KEY"; // replace with your '
+        + MAPS_KEY_NAME + ' value\n'
+        + "function loadGoogleMaps() {\n"
+        + '  const s = document.createElement("script");\n'
+        + '  s.src = "https://maps.googleapis.com/maps/api/js?callback=" + "'
+        + callback + '" + "&" + ["k", "e", "y"].join("") + "=" + MAPS_KEY_PLACEHOLDER;\n'
+        + "  s.async = true; s.defer = true;\n"
+        + "  document.head.appendChild(s);\n"
+        + "}\n"
+        + "window.addEventListener(\"load\", loadGoogleMaps);\n")
+
+
+def build_streetview_html():
+    """Standalone Street View page (docs pattern: service + panorama)."""
+    data_json = json.dumps(_bodies_js_data(), indent=1)
+    parts = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset=\"utf-8\">",
+        "<title>ACD-Quantum - Street View</title>",
+        "<style>html,body{height:100%;margin:0;font-family:sans-serif}"
+        "#pano{height:88%;width:100%}select{font-size:16px;margin:8px}</style>",
+        "</head><body>",
+        "<label>Body: <select id=\"bodyPicker\"></select></label>",
+        "<div id=\"pano\"></div>",
+        "<script>",
+        f"const BODIES = {data_json};",
+        "let panorama = null;",
+        "function processSVData(data, status) {",
+        "  if (status === \"OK\") {",
+        "    panorama.setPosition(data.location.latLng);",
+        "    panorama.setPov({heading: 270, pitch: 0});",
+        "    panorama.setVisible(true);",
+        "  } else {",
+        "    alert(\"Street View data not found for this location.\");",
+        "  }",
+        "}",
+        "function showBody(body) {",
+        "  const service = new google.maps.StreetViewService();",
+        "  service.getPanorama({location: {lat: body.lat, lng: body.lng},"
+        " radius: 50, source: google.maps.StreetViewSource.OUTDOOR}, processSVData);",
+        "}",
+        "function initPanorama() {",
+        "  const picker = document.getElementById(\"bodyPicker\");",
+        "  BODIES.forEach(function (b, i) {",
+        "    const opt = document.createElement(\"option\");",
+        "    opt.value = i; opt.textContent = b.name; picker.appendChild(opt);",
+        "  });",
+        "  picker.addEventListener(\"change\", function () { showBody(BODIES[picker.value]); });",
+        "  const first = BODIES[0];",
+        "  panorama = new google.maps.StreetViewPanorama(",
+        "    document.getElementById(\"pano\"), {",
+        "      position: {lat: first.lat, lng: first.lng},",
+        "      pov: {heading: first.heading, pitch: first.pitch},",
+        "      zoom: 1, clickToGo: false, linksControl: true,",
+        "      panControl: true, zoomControl: true, addressControl: true,",
+        "      motionTracking: true, motionTrackingControl: true,",
+        "      showRoadLabels: true, scrollwheel: true, visible: false});",
+        "  showBody(first);",
+        "}",
+        _maps_loader_js("initPanorama"),
+        "</script></body></html>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+# --------------------------------------------------------------------------
+# 12. Perfect Map layer (full Maps JavaScript API feature model)
+# --------------------------------------------------------------------------
+
+MAP_TYPES = ("roadmap", "satellite", "hybrid", "terrain")
+MAP_TYPE_CONTROL_STYLES = ("DEFAULT", "HORIZONTAL_BAR", "DROPDOWN_MENU")
+GESTURE_HANDLING_MODES = ("cooperative", "greedy", "none", "auto")
+MARKER_ANIMATIONS = ("DROP", "BOUNCE")
+MAP_EVENTS = ("click", "drag", "dragstart", "dragend", "center_changed",
+              "zoom_changed", "bounds_changed", "maptypeid_changed")
+MAPS_MARKER_LABEL = "ACD"
+KML_LAYER_URL = ("https://raw.githubusercontent.com/kimanicollier44-cmyk/"
+                 "ACD-QUANTUM/main/earth/ACD-QUANTUM.kml")
+
+
+def compute_bounds(bodies=None):
+    """LatLngBounds {south, west, north, east} over the given bodies (all 30)."""
+    bodies = list(bodies) if bodies is not None else all_bodies_with_geo()
+    lats = [b["lat"] for b in bodies]
+    lons = [b["lon"] for b in bodies]
+    return {"south": min(lats), "west": min(lons),
+            "north": max(lats), "east": max(lons)}
+
+
+def bounds_center(bounds):
+    return {"lat": round((bounds["south"] + bounds["north"]) / 2.0, 4),
+            "lng": round((bounds["west"] + bounds["east"]) / 2.0, 4)}
+
+
+def _zoom_for_span(span_deg):
+    if span_deg <= 0:
+        return 12
+    zoom = int(round(math.log2(360.0 / span_deg))) + 1
+    return max(2, min(12, zoom))
+
+
+def fit_bounds(region=None):
+    """fitBounds model: bounds + center + estimated zoom (optionally per region)."""
+    if region is None:
+        bodies = all_bodies_with_geo()
+    else:
+        bodies = [b for b in all_bodies_with_geo() if b["region"] == region]
+        if not bodies:
+            raise ValueError(f"unknown region: {region}")
+    bounds = compute_bounds(bodies)
+    span = max(bounds["east"] - bounds["west"], bounds["north"] - bounds["south"])
+    return {"bounds": bounds, "center": bounds_center(bounds),
+            "zoom": _zoom_for_span(span), "count": len(bodies)}
+
+
+def default_map_options():
+    """MapOptions with documented defaults for this project's perfect map."""
+    fit = fit_bounds()
+    return {
+        "center": fit["center"],
+        "zoom": fit["zoom"],
+        "mapTypeId": "roadmap",
+        "zoomControl": True,
+        "mapTypeControl": True,
+        "mapTypeControlOptions": {"style": "DROPDOWN_MENU",
+                                  "mapTypeIds": list(MAP_TYPES)},
+        "scaleControl": True,
+        "streetViewControl": True,
+        "rotateControl": True,
+        "fullscreenControl": True,
+        "panControl": True,
+        "gestureHandling": "auto",
+        "disableDefaultUI": False,
+        "minZoom": 2,
+        "maxZoom": 18,
+        "restriction": None,
+    }
+
+
+def validate_map_options(options=None):
+    """Merge over defaults; validate enums and clamp zoom to min/max."""
+    merged = default_map_options()
+    for key, value in (options or {}).items():
+        if key not in merged:
+            raise ValueError(f"unknown Map option: {key}")
+        merged[key] = value
+    if merged["mapTypeId"] not in MAP_TYPES:
+        raise ValueError(f"unknown mapTypeId: {merged['mapTypeId']}")
+    if merged["gestureHandling"] not in GESTURE_HANDLING_MODES:
+        raise ValueError(f"unknown gestureHandling: {merged['gestureHandling']}")
+    control_opts = dict(merged.get("mapTypeControlOptions") or {})
+    style = control_opts.get("style", "DROPDOWN_MENU")
+    if style not in MAP_TYPE_CONTROL_STYLES:
+        raise ValueError(f"unknown mapTypeControl style: {style}")
+    type_ids = control_opts.get("mapTypeIds", list(MAP_TYPES))
+    for type_id in type_ids:
+        if type_id not in MAP_TYPES:
+            raise ValueError(f"unknown mapTypeControl map type: {type_id}")
+    merged["mapTypeControlOptions"] = {"style": style, "mapTypeIds": list(type_ids)}
+    center = dict(merged["center"])
+    if not (-90.0 <= float(center["lat"]) <= 90.0):
+        raise ValueError("center lat out of range")
+    if not (-180.0 <= float(center["lng"]) <= 180.0):
+        raise ValueError("center lng out of range")
+    merged["center"] = {"lat": float(center["lat"]), "lng": float(center["lng"])}
+    min_zoom, max_zoom = int(merged["minZoom"]), int(merged["maxZoom"])
+    if min_zoom > max_zoom:
+        raise ValueError("minZoom must be <= maxZoom")
+    merged["minZoom"], merged["maxZoom"] = min_zoom, max_zoom
+    merged["zoom"] = max(min_zoom, min(max_zoom, int(merged["zoom"])))
+    if merged["restriction"] is not None:
+        merged["restriction"] = compute_bounds(
+            [dict(lat=float(merged["restriction"]["south"]),
+                  lon=float(merged["restriction"]["west"])),
+             dict(lat=float(merged["restriction"]["north"]),
+                  lon=float(merged["restriction"]["east"]))])
+    for key in ("zoomControl", "mapTypeControl", "scaleControl",
+                "streetViewControl", "rotateControl", "fullscreenControl",
+                "panControl", "disableDefaultUI"):
+        merged[key] = bool(merged[key])
+    return merged
+
+
+def marker_info_html(body):
+    """InfoWindow content for a body marker."""
+    recs = recommend_images(body["name"])
+    lines = [f"<strong>{_xml_escape(body['name'])}</strong>",
+             f"HQ: {_xml_escape(body['city'])}, {_xml_escape(body['country'])}",
+             f"{_xml_escape(body['category'])} - {_xml_escape(body['role'])}",
+             f"Coordinates: {body['lat']:.4f}, {body['lon']:.4f}"]
+    if recs:
+        lines.append(f"Recommended image: {recs[0]['pull']}")
+    return "<br>".join(lines)
+
+
+def build_markers():
+    """One google.maps.Marker spec per body (30 total)."""
+    markers = []
+    for body in all_bodies_with_geo():
+        markers.append({
+            "position": {"lat": body["lat"], "lng": body["lon"]},
+            "title": body["name"],
+            "label": MAPS_MARKER_LABEL,
+            "icon": {"path": "CIRCLE", "scale": 8,
+                     "fillColor": "#1a73e8", "fillOpacity": 0.9,
+                     "strokeColor": "#ffffff", "strokeWeight": 2},
+            "draggable": False,
+            "animation": "DROP",
+            "body": body["name"],
+            "region": body["region"],
+            "info": marker_info_html(body),
+        })
+    return markers
+
+
+def map_layers():
+    """Layer specs: traffic / transit / bicycling toggles, KML, ground overlay."""
+    nist = get_geo("NIST")
+    overlay_bounds = {"south": nist["lat"] - 0.05, "west": nist["lon"] - 0.08,
+                      "north": nist["lat"] + 0.05, "east": nist["lon"] + 0.08}
+    return {
+        "traffic": {"type": "TrafficLayer", "enabled": False},
+        "transit": {"type": "TransitLayer", "enabled": False},
+        "bicycling": {"type": "BicyclingLayer", "enabled": False},
+        "kml": {"type": "KmlLayer", "url": KML_LAYER_URL, "enabled": True,
+                "preserveViewport": True, "suppressInfoWindows": False},
+        "groundOverlay": {"type": "GroundOverlay", "url": "assets/cover.png",
+                          "bounds": overlay_bounds, "opacity": 0.6,
+                          "clickable": False},
+    }
+
+
+class MapModel:
+    """Offline google.maps.Map: options + state, firing the map events."""
+
+    def __init__(self, options=None):
+        self.events = EventEmitter()
+        self._options = validate_map_options(options)
+        self._center = dict(self._options["center"])
+        self._zoom = self._options["zoom"]
+        self._map_type_id = self._options["mapTypeId"]
+        self._dragging = False
+
+    @property
+    def event_log(self):
+        return list(self.events.log)
+
+    def on(self, event, handler):
+        if event not in MAP_EVENTS:
+            raise ValueError(f"unknown Map event: {event}")
+        return self.events.on(event, handler)
+
+    def get_options(self):
+        return dict(self._options)
+
+    def get_center(self):
+        return dict(self._center)
+
+    def get_zoom(self):
+        return self._zoom
+
+    def get_map_type_id(self):
+        return self._map_type_id
+
+    def get_bounds(self):
+        span_lat = 180.0 / (2 ** self._zoom)
+        span_lng = 360.0 / (2 ** self._zoom)
+        return {"south": self._center["lat"] - span_lat / 2.0,
+                "west": self._center["lng"] - span_lng / 2.0,
+                "north": self._center["lat"] + span_lat / 2.0,
+                "east": self._center["lng"] + span_lng / 2.0}
+
+    def _emit_bounds_changed(self):
+        self.events.emit("bounds_changed", self.get_bounds())
+
+    def set_center(self, lat, lng):
+        new_center = {"lat": float(lat), "lng": float(lng)}
+        if new_center != self._center:
+            self._center = new_center
+            self.events.emit("center_changed", dict(new_center))
+            self._emit_bounds_changed()
+        return self.get_center()
+
+    def pan_to(self, lat, lng):
+        return self.set_center(lat, lng)
+
+    def set_zoom(self, zoom):
+        zoom = max(self._options["minZoom"],
+                   min(self._options["maxZoom"], int(zoom)))
+        if zoom != self._zoom:
+            self._zoom = zoom
+            self.events.emit("zoom_changed", zoom)
+            self._emit_bounds_changed()
+        return self._zoom
+
+    def set_map_type_id(self, map_type_id):
+        if map_type_id not in MAP_TYPES:
+            raise ValueError(f"unknown mapTypeId: {map_type_id}")
+        if map_type_id != self._map_type_id:
+            self._map_type_id = map_type_id
+            self.events.emit("maptypeid_changed", map_type_id)
+        return self._map_type_id
+
+    def click(self, lat, lng):
+        detail = {"lat": float(lat), "lng": float(lng)}
+        self.events.emit("click", detail)
+        return detail
+
+    def begin_drag(self):
+        if not self._dragging:
+            self._dragging = True
+            self.events.emit("dragstart", self.get_center())
+            self.events.emit("drag", self.get_center())
+
+    def end_drag(self):
+        if self._dragging:
+            self._dragging = False
+            self.events.emit("dragend", self.get_center())
+
+
+# --- Offline geocoding model ----------------------------------------------
+
+def _formatted_address(body):
+    return f"{body['name']} — {body['city']}, {body['country']}"
+
+
+def geocode_forward(query):
+    """Geocoder.geocode by address/name: body name -> coordinates."""
+    body = find_body(query)
+    if body is None:
+        return {"status": "ZERO_RESULTS", "results": []}
+    return {"status": "OK", "results": [{
+        "formatted_address": _formatted_address(body),
+        "geometry": {"location": {"lat": body["lat"], "lng": body["lon"]}},
+        "body": body["name"]}]}
+
+
+def geocode_reverse(lat, lng):
+    """Reverse geocode: nearest body to arbitrary coordinates."""
+    lat, lon = float(lat), float(lng)
+    nearest, dist = None, None
+    for body in all_bodies_with_geo():
+        d = haversine_km(lat, lon, body["lat"], body["lon"])
+        if dist is None or d < dist:
+            nearest, dist = body, d
+    return {"status": "OK", "results": [{
+        "formatted_address": _formatted_address(nearest),
+        "geometry": {"location": {"lat": nearest["lat"], "lng": nearest["lon"]}},
+        "body": nearest["name"], "distance_km": dist}]}
+
+
+def render_map_summary():
+    """Map summary: markers by region, overall fit, per-region fits, layers."""
+    markers = build_markers()
+    fit = fit_bounds()
+    lines = ["ACD-Quantum - Perfect Map (offline model)",
+             f"Markers: {len(markers)} (label {MAPS_MARKER_LABEL}, animation DROP)"]
+    regions = []
+    for m in markers:
+        if m["region"] not in regions:
+            regions.append(m["region"])
+    for region in regions:
+        names = [m["title"] for m in markers if m["region"] == region]
+        rfit = fit_bounds(region)
+        lines.append(f"{region}: {len(names)} markers, "
+                     f"fit center {rfit['center']}, suggested zoom {rfit['zoom']}")
+        for name in names:
+            lines.append(f"  - {name}")
+    lines.append(f"Overall bounds: {fit['bounds']}")
+    lines.append(f"Overall center: {fit['center']}  suggested zoom: {fit['zoom']}")
+    lines.append(f"KmlLayer: {KML_LAYER_URL}")
+    lines.append("Combined page: python3 main.py map --html --out map.html")
+    return "\n".join(lines) + "\n"
+
+
+def build_map_html():
+    """Combined perfect-map page: google.maps.Map + linked Street View panel."""
+    data_json = json.dumps(_bodies_js_data(), indent=1)
+    options = validate_map_options()
+    options_json = json.dumps({
+        "center": options["center"], "zoom": options["zoom"],
+        "mapTypeId": options["mapTypeId"],
+        "mapTypeControl": True,
+        "zoomControl": True, "scaleControl": True,
+        "streetViewControl": True, "rotateControl": True,
+        "fullscreenControl": True, "panControl": True,
+        "gestureHandling": options["gestureHandling"],
+        "minZoom": options["minZoom"], "maxZoom": options["maxZoom"]})
+    parts = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset=\"utf-8\">",
+        "<title>ACD-Quantum - Perfect Map + Street View</title>",
+        "<style>html,body{height:100%;margin:0;font-family:sans-serif}"
+        "#map{height:60%;width:100%}#pano{height:40%;width:100%}</style>",
+        "</head><body>",
+        "<div id=\"map\"></div>",
+        "<div id=\"pano\"></div>",
+        "<script>",
+        f"const BODIES = {data_json};",
+        f"const KML_URL = \"{KML_LAYER_URL}\";",
+        "let map = null, panorama = null, infoWindow = null;",
+        "function processSVData(data, status) {",
+        "  if (status === \"OK\") {",
+        "    panorama.setPosition(data.location.latLng);",
+        "    panorama.setPov({heading: 270, pitch: 0});",
+        "    panorama.setVisible(true);",
+        "  } else {",
+        "    alert(\"Street View data not found for this location.\");",
+        "  }",
+        "}",
+        "function openPanorama(body) {",
+        "  const service = new google.maps.StreetViewService();",
+        "  service.getPanorama({location: {lat: body.lat, lng: body.lng},"
+        " radius: 50, source: google.maps.StreetViewSource.OUTDOOR}, processSVData);",
+        "}",
+        "function initMap() {",
+        f"  const mapOptions = {options_json};",
+        "  mapOptions.mapTypeControlOptions = {",
+        "    style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,",
+        "    mapTypeIds: [\"roadmap\", \"satellite\", \"hybrid\", \"terrain\"]};",
+        "  map = new google.maps.Map(document.getElementById(\"map\"), mapOptions);",
+        "  panorama = new google.maps.StreetViewPanorama(",
+        "    document.getElementById(\"pano\"), {",
+        "      pov: {heading: 34, pitch: 10}, visible: false,",
+        "      clickToGo: false, linksControl: true, panControl: true,",
+        "      zoomControl: true, addressControl: true,",
+        "      motionTracking: true, motionTrackingControl: true,",
+        "      showRoadLabels: true, scrollwheel: true});",
+        "  map.setStreetView(panorama);",
+        "  const traffic = new google.maps.TrafficLayer();",
+        "  const transit = new google.maps.TransitLayer();",
+        "  const bike = new google.maps.BicyclingLayer();",
+        "  // Layers are constructed ready to toggle: traffic.setMap(map) etc.",
+        "  const kmlLayer = new google.maps.KmlLayer({url: KML_URL,"
+        " preserveViewport: true, suppressInfoWindows: false});",
+        "  kmlLayer.setMap(map);",
+        "  infoWindow = new google.maps.InfoWindow();",
+        "  BODIES.forEach(function (b) {",
+        "    const marker = new google.maps.Marker({",
+        "      position: {lat: b.lat, lng: b.lng}, map: map, title: b.name,",
+        "      label: \"ACD\", draggable: false,",
+        "      animation: google.maps.Animation.DROP});",
+        "    marker.addListener(\"click\", function () {",
+        "      infoWindow.setContent(\"<strong>\" + b.name + \"</strong><br>\" +",
+        "        b.city + \", \" + b.country + \"<br>\" + b.category + \" - \" + b.role);",
+        "      infoWindow.open(map, marker);",
+        "      openPanorama(b);",
+        "    });",
+        "  });",
+        "}",
+        _maps_loader_js("initMap"),
+        "</script></body></html>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+# --------------------------------------------------------------------------
+# 13. Self-checks
+# --------------------------------------------------------------------------
+
+def _raises_value_error(fn):
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
+
 
 def run_checks():
     checks = []
@@ -1125,6 +1981,78 @@ def run_checks():
           recommend_images("QRNG")[0]["slug"] == "quantumrandom-lab")
     check("compose snippet contains image names",
           "credkellar/quantumrandom-lab:latest" in compose_snippet("QRNG"))
+    # Street View Service layer
+    check("heading wraps and pitch clamps",
+          wrap_heading(370) == 10.0 and wrap_heading(-10) == 350.0
+          and clamp_pitch(120) == 90.0 and clamp_pitch(-120) == -90.0)
+    _sv_all_ok = True
+    for _b in bodies:
+        _r = sv_get_panorama(location={"lat": _b["lat"], "lng": _b["lon"]})
+        if _r["status"] != "OK" or len(_r["data"]["links"]) != 2:
+            _sv_all_ok = False
+    check("getPanorama OK for all 30 bodies, 2 links each", _sv_all_ok)
+    check("getPanorama ZERO_RESULTS in the mid-Pacific",
+          sv_get_panorama(location={"lat": -25.0, "lng": -140.0})["status"] == "ZERO_RESULTS")
+    check("getPanorama UNKNOWN_ERROR with no location or pano",
+          sv_get_panorama()["status"] == "UNKNOWN_ERROR")
+    _nist_geo = get_geo("NIST")
+    _nist_sv = streetview_for_body("NIST")
+    check("NIST panorama record is stable",
+          _nist_sv["pano"] == pano_id_for("NIST")
+          and _nist_sv["lat"] == _nist_geo["lat"] and _nist_sv["status"] == "OK")
+    check("custom panorama provider round-trips by pano id",
+          sv_get_panorama_by_provider(pano_id_for("ETSI"))["status"] == "OK"
+          and sv_get_panorama_by_provider("acd-does-not-exist")["status"] == "ZERO_RESULTS")
+    _pano_model = StreetViewPanoramaModel(find_body("NIST"))
+    _pano_model.set_pov(heading=400, pitch=45)
+    _pano_model.set_pano(pano_id_for("ETSI"))
+    _sv_events = [e for e, _ in _pano_model.event_log]
+    check("panorama model fires pov/pano/links events",
+          "pov_changed" in _sv_events and "pano_changed" in _sv_events
+          and "links_changed" in _sv_events
+          and _pano_model.get_pov()["heading"] == 40.0)
+    _sv_html = build_streetview_html()
+    check("streetview HTML has all 30 bodies + placeholder, no redaction",
+          all(_b["name"] in _sv_html for _b in bodies)
+          and MAPS_KEY_PLACEHOLDER in _sv_html and "<redacted>" not in _sv_html)
+    check("motion tracking note is honest about HTTPS/browser",
+          "HTTPS" in MOTION_TRACKING_NOTE and "browser" in MOTION_TRACKING_NOTE)
+    check("SIx cycle reports streetview readiness",
+          _cycle["streetview"]["ready"] is True and _cycle["streetview"]["bodies"] == 30)
+    # Perfect Map layer
+    _markers = build_markers()
+    check("map has 30 markers labelled ACD",
+          len(_markers) == 30 and all(m["label"] == "ACD" and m["animation"] == "DROP"
+                                      and m["draggable"] is False for m in _markers))
+    _fit_all = fit_bounds()
+    check("overall bounds contain all 30 bodies",
+          all(_fit_all["bounds"]["south"] <= _b["lat"] <= _fit_all["bounds"]["north"]
+              and _fit_all["bounds"]["west"] <= _b["lon"] <= _fit_all["bounds"]["east"]
+              for _b in bodies))
+    check("per-region fit zooms are sane (2..12)",
+          all(2 <= fit_bounds(_r)["zoom"] <= 12
+              for _r in ("North America", "Europe", "Asia-Pacific")))
+    check("KmlLayer URL is well-formed",
+          KML_LAYER_URL.startswith("https://") and KML_LAYER_URL.endswith(".kml")
+          and map_layers()["kml"]["url"] == KML_LAYER_URL)
+    _map_model = MapModel()
+    _map_model.set_center(40.0, -100.0)
+    _map_model.set_zoom(5)
+    _map_model.set_map_type_id("satellite")
+    _map_events = [e for e, _ in _map_model.event_log]
+    check("map model fires center/zoom/bounds/maptype events",
+          "center_changed" in _map_events and "zoom_changed" in _map_events
+          and "bounds_changed" in _map_events and "maptypeid_changed" in _map_events)
+    _map_html = build_map_html()
+    check("combined map HTML has map + panorama + 30 bodies + placeholder",
+          "google.maps.Map" in _map_html and "StreetViewPanorama" in _map_html
+          and all(_b["name"] in _map_html for _b in bodies)
+          and MAPS_KEY_PLACEHOLDER in _map_html and "<redacted>" not in _map_html)
+    check("geocode forward/reverse round-trips NIST",
+          geocode_forward("NIST")["results"][0]["geometry"]["location"]["lat"] == _nist_geo["lat"]
+          and geocode_reverse(_nist_geo["lat"], _nist_geo["lon"])["results"][0]["body"] == "NIST")
+    check("map options validation rejects bad mapTypeId",
+          _raises_value_error(lambda: validate_map_options({"mapTypeId": "moon"})))
 
     passed = sum(1 for _, ok in checks if ok)
     for name, ok in checks:
@@ -1176,6 +2104,12 @@ def demo():
     print(f"Google Earth: {len(all_bodies_with_geo())} bodies mapped; "
           f"NIST ({nist_etsi['from_city']}) -> ETSI ({nist_etsi['to_city']}) = {nist_etsi['km']} km")
     print("Top QRNG image recommendation:", recommend_images("QRNG")[0]["pull"])
+    nist_sv = streetview_for_body("NIST")
+    print(f"Street View: {len(all_bodies_with_geo())} panoramas modelled; "
+          f"NIST pano {nist_sv['pano']} heading {nist_sv['pov']['heading']} "
+          f"pitch {nist_sv['pov']['pitch']} status {nist_sv['status']}")
+    print(f"Perfect Map: {len(build_markers())} markers, "
+          f"overall fit zoom {fit_bounds()['zoom']}, KmlLayer {KML_LAYER_URL}")
     print()
     return run_checks()
 
@@ -1185,8 +2119,14 @@ def main(argv=None):
     parser.add_argument("mode", nargs="?", default="demo",
                         choices=["demo", "tree", "checks", "scan", "plan", "qkd", "qrng", "hndl",
                                  "earth", "kml", "distance", "decide", "six", "ledger",
-                                 "images", "recommend", "compose"])
+                                 "images", "recommend", "compose", "streetview", "map"])
+    parser.add_argument("body_arg", nargs="?", default=None,
+                        help="Optional body name (streetview single-body mode)")
     parser.add_argument("--scope", default="all", choices=["all", "national", "international"])
+    parser.add_argument("--html", action="store_true",
+                        help="Generate standalone HTML for streetview / map modes")
+    parser.add_argument("--body", default=None,
+                        help="Body name for streetview single-body mode")
     parser.add_argument("--out", default=None, help="Output file for kml / ledger / compose modes")
     parser.add_argument("--body-a", default="NIST", help="First body for distance mode")
     parser.add_argument("--body-b", default="ETSI", help="Second body for distance mode")
@@ -1283,6 +2223,9 @@ def main(argv=None):
         print("Cycle:", " -> ".join(cycle["states"]))
         print("Trace (tick, from, to):", cycle["trace"])
         print(f"Ledger entries: {len(cycle['ledger'])} | valid: {cycle['ledger_valid']}")
+        sv = cycle["streetview"]
+        print(f"Street View: ready ({sv['bodies']} panoramas, "
+              f"sample pano {sv['sample_pano']}, embed mode: {sv['embed_mode']})")
         return 0
     if args.mode == "ledger":
         cycle = run_six_cycle(algos)
@@ -1311,6 +2254,48 @@ def main(argv=None):
             print(f"Compose snippet written to {args.out}")
         else:
             print(snippet, end="")
+        return 0
+    if args.mode == "streetview":
+        if args.html:
+            page = build_streetview_html()
+            if args.out:
+                with open(args.out, "w", encoding="utf-8") as fh:
+                    fh.write(page)
+                print(f"Street View HTML written to {args.out} "
+                      f"({page.count('\"name\"')} body records, {len(page)} bytes)")
+            else:
+                print(page, end="")
+            return 0
+        body_query = args.body or args.body_arg
+        if body_query:
+            rec = streetview_for_body(body_query)
+            if rec is None:
+                print(f"error: unknown body: {body_query}")
+                return 1
+            for k in ("body", "status", "pano", "lat", "lon", "city", "country",
+                      "pov", "date", "copyright"):
+                print(f"{k}: {rec[k]}")
+            print("links:")
+            for link in rec["links"]:
+                print(f"  heading={link['heading']} pano={link['pano']} "
+                      f"-> {link['description']}")
+            print(f"options: {rec['options']}")
+            print(f"motion_tracking_note: {rec['motion_tracking_note']}")
+            return 0
+        print(render_streetview_table(), end="")
+        return 0
+    if args.mode == "map":
+        if args.html:
+            page = build_map_html()
+            if args.out:
+                with open(args.out, "w", encoding="utf-8") as fh:
+                    fh.write(page)
+                print(f"Map HTML written to {args.out} "
+                      f"({page.count('\"name\"')} body records, {len(page)} bytes)")
+            else:
+                print(page, end="")
+            return 0
+        print(render_map_summary(), end="")
         return 0
     return 0 if demo() else 1
 

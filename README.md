@@ -10,7 +10,7 @@ One `main.py`, pure Python standard library, zero dependencies, offline and dete
 
 The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA, plus HQC), **QKD**, **QRNG**, **Crypto Discovery / Agility**, and **HNDL Defense**.
 
-**Merged in:** a **Google Earth layer** (real HQ coordinates for all 30 bodies, KML export for Google Earth, haversine distances), the **Gemini Argon 4 Extended Thinking DECIDER** seat (MAP→MODEL→STRESS→DECIDE, trace-hashed, tighten-only, names-only key, no live calls), the **SIx Neural Core** as the interface core driving every run (5-state machine + hash-chained audit ledger), and a **Recommended Quantum Docker Images** catalog of Darion's own `credkellar/` fleet with a branch/topic recommendation engine.
+**Merged in:** a **Google Earth layer** (real HQ coordinates for all 30 bodies, KML export for Google Earth, haversine distances), the **Gemini Argon 4 Extended Thinking DECIDER** seat (MAP→MODEL→STRESS→DECIDE, trace-hashed, tighten-only, names-only key, no live calls), the **SIx Neural Core** as the interface core driving every run (5-state machine + hash-chained audit ledger), a **Recommended Quantum Docker Images** catalog of Darion's own `credkellar/` fleet with a branch/topic recommendation engine, a **Google Maps Street View Service layer** (offline-faithful models of `StreetViewService.getPanorama`, `StreetViewPanorama` options/events and a custom panorama provider for all 30 bodies, plus a standalone Street View HTML generator), and a **Perfect Map layer** (the full Maps JavaScript API feature model — map options, 30 markers with InfoWindows, bounds fitting, Traffic/Transit/Bicycling/KML layers, map events, offline geocoding — and one combined map + Street View HTML page where clicking a marker opens that body's panorama).
 
 > Honest limits: the QKD and QRNG modules are classical simulations of quantum protocols. They use no real quantum hardware and produce no true quantum randomness. Real migration must use validated implementations of the NIST standards.
 
@@ -32,6 +32,8 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 - **Gemini Argon 4 Extended Thinking** — DECIDER seat (`gemini-argon-4`, engine gemini-2.5-pro, model google/gemini-carbon-4-extended-pro-thinking), MAP→MODEL→STRESS→DECIDE with sha256 trace, tiers 2048/8192/32768 by stakes, `GEMINI_API_KEY` names/presence-only, **no live calls**, tighten-only (`can_override=False`)
 - **SIx Neural Core** — Darion's SIx interface core ported to pure stdlib: 5-state machine (IDLE/LISTENING/THINKING/RESPONDING/LEARNING) with SIx's legal-transition map, logical ticks, per-state behaviour params, plus SIx's hash-chained audit ledger
 - **Docker fleet catalog** — 29 recommended quantum images from Darion's own `credkellar/` Docker Hub fleet (snapshot Nov 2026)
+- **Google Maps Street View Service (modelled)** — `StreetViewService.getPanorama` request/response model (location or pano id, radius 50 default, source default/outdoor, status OK / ZERO_RESULTS / UNKNOWN_ERROR), `StreetViewPanorama` options with docs defaults + heading wrap / pitch clamp validation, a custom panorama provider, the six documented `*_changed` events on an offline panorama model, and a standalone HTML generator that loads the real Maps JavaScript API (placeholder credential only — `YOUR_API_KEY`, key name `GOOGLE_MAPS_API_KEY`)
+- **Google Maps Perfect Map (modelled)** — `MapOptions` model (map types, all controls, gesture handling, min/max zoom, restriction), 30 markers (label `ACD`, DROP animation) with InfoWindow content, `LatLngBounds` fitting overall + per region, Traffic/Transit/Bicycling layer toggles, a `KmlLayer` for `earth/ACD-QUANTUM.kml`, a cover-image `GroundOverlay` example, the map event set on an offline map model, forward/reverse geocoding over the body data, and a combined map + Street View HTML generator (marker click → that body's panorama, the docs' side-by-side pattern)
 
 ### ⛓️ Web3 & Infrastructure
 
@@ -66,7 +68,9 @@ The five branches are: **PQC** (NIST FIPS 203 ML-KEM / 204 ML-DSA / 205 SLH-DSA,
 9. **Argon 4 DECIDER** — `python main.py decide --algos RSA-2048,AES-256` runs MAP (scan) → MODEL (readiness) → STRESS (negative controls: an attempt to flip RSA-2048 to "safe" and an attempt to raise the score are both rejected) → DECIDE (GO / CONDITIONAL GO / NO-GO + required actions), sealed with a sha256 trace hash. It signs off every migration plan and every HNDL verdict, and it can only ever tighten.
 10. **SIx Neural Core run cycle** — `python main.py six` drives a full run through the core: LISTENING = inventory intake, THINKING = the Argon DECIDE pipeline, RESPONDING = plan/report output, LEARNING = append the run to the hash-chained audit ledger. `python main.py ledger` shows the chain and verifies it — mutate any entry and verification fails.
 11. **Docker image recommendations** — `python main.py images` prints the full fleet catalog; `python main.py recommend --topic QRNG` ranks images per branch/topic (QRNG → quantumrandom-lab first; QKD → quantumrepeater-lab, bellpair-factory; PQC → quantumshor-lab, magicstate-lab); `python main.py compose --topic QKD` prints a ready docker-compose snippet.
-12. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 54/54`.
+12. **Street View layer** — `python main.py streetview` prints the panorama table for all 30 bodies (deterministic pano id, HQ coordinates, default POV heading = bearing toward the nearest neighbouring body, pitch 10, status OK); `python main.py streetview NIST` prints one body's full panorama data — links to its two nearest neighbours with real bearing headings, tiles spec, image date, validated options, and the honest motion-tracking note (real device motion tracking needs an HTTPS browser page; this layer models the option flags). `python main.py streetview --html --out streetview.html` generates a standalone page that uses the real Maps JavaScript API exactly as documented: `StreetViewService.getPanorama` with radius 50 + outdoor source, OK / not-found handling, and a picker covering all 30 bodies.
+13. **Perfect Map layer** — `python main.py map` prints the map summary: 30 ACD-labelled markers grouped by region, overall and per-region bounds fits with suggested zooms, and the KML layer URL. `python main.py map --html --out map.html` generates the perfect-merge page: a `google.maps.Map` with every marker + InfoWindow, map-type switcher and all controls, the KML layer on the repo's own `earth/ACD-QUANTUM.kml`, and a linked Street View panel — click a marker and that body's panorama opens. Both HTML generators carry only the `YOUR_API_KEY` placeholder; add your own Google Maps key (kept under the name `GOOGLE_MAPS_API_KEY`) to use them live.
+14. **Self-checks** — every run of the demo ends with the built-in verification suite, printing `CHECKS 72/72`.
 
 ### Flowchart — main.py
 
@@ -81,7 +85,7 @@ flowchart TD
     H -->|no| J[Sifted key kept]
     B -->|qrng| K[SHA-256 counter expansion<br/>labelled simulation]
     B -->|hndl| L[Mosca: X + Y > Z ?]
-    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 54/54]
+    B -->|demo / checks| M[Run all + self-checks] --> N[CHECKS 72/72]
 ```
 
 ### Flowchart — merged flow (SIx core + Argon 4 + Earth + fleet)
@@ -111,7 +115,7 @@ flowchart LR
 7. Honest QRNG: simulated, labelled simulated, never oversold.
 8. The Mosca inequality turns "quantum risk" into one arithmetic check.
 9. Fully deterministic — same seed, same result, byte-for-byte, so tests are exact.
-10. Self-verifying: every demo run ends with `CHECKS 54/54`.
+10. Self-verifying: every demo run ends with `CHECKS 72/72`.
 
 ## 10 problems it solves
 
@@ -188,6 +192,11 @@ python3 main.py ledger
 python3 main.py images
 python3 main.py recommend --topic QRNG
 python3 main.py compose --topic QKD
+python3 main.py streetview
+python3 main.py streetview NIST
+python3 main.py streetview --html --out streetview.html
+python3 main.py map
+python3 main.py map --html --out map.html
 python3 main.py checks
 
 # 4. Run the tests (only dev dependency)
@@ -210,11 +219,11 @@ docker run --rm acd-quantum
 
 ```
 ACD-Quantum/
-├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, checks, CLI
+├── main.py                  # ONE file: tree, scanner, plan, BB84, QRNG, HNDL, Earth/KML, Argon 4, SIx core, fleet, Street View, Perfect Map, checks, CLI
 ├── README.md                # This file
 ├── ABOUT.txt                # Exactly-350-character repo About description
 ├── tests/
-│   └── test_main.py         # pytest suite (43 tests)
+│   └── test_main.py         # pytest suite (62 tests)
 ├── assets/
 │   └── cover.png            # Cover image, 2736x912 (official remix of Darion's own art)
 ├── conftest.py              # Puts the repo root on sys.path for pytest imports
