@@ -130,7 +130,7 @@ def test_hndl_mosca_safe():
 def test_run_checks_passes(capsys):
     assert main.run_checks() is True
     out = capsys.readouterr().out
-    assert "CHECKS 123/123" in out
+    assert "CHECKS 138/138" in out
 
 
 # --- Merge 1: Google Earth layer ---
@@ -1017,3 +1017,116 @@ def test_knowledge_renders_and_voice_routes():
     assert main.parse_voice_command("ACD glossary")["mode"] == "glossary"
     assert main.parse_voice_command("ACD career")["mode"] == "career"
     assert main.parse_voice_command("ACD knowledge")["mode"] == "knowledge"
+
+
+# --- Merge 10: certs, agent loop, Shannon, Claude Course -------------------
+
+def test_htb_certs_catalog_and_holder_honesty():
+    certs = main.get_htb_certs()
+    assert [c["code"] for c in certs] == ["CPTS", "CWES", "CAPE", "CWEE",
+                                          "COAE", "CWPE", "CDSA", "CJCA"]
+    cpts = main.cert_by_code("CPTS")
+    assert cpts["name"] == "Certified Penetration Testing Specialist"
+    assert cpts["date_as_printed"] == "12 Feb 2026"
+    assert cpts["issuer"] == "Hack The Box"
+    assert all(c["holder_as_printed"] == "Kevin Roberts" for c in certs)
+    assert "NOT a claim" in main.HTB_HOLDER_LABEL
+    signers = {s["name"] for s in cpts["signatories"]}
+    assert signers == {"Charalampos Pylarinos", "Dimitrios Bougioukas"}
+    assert main.cert_by_code("nope") is None
+
+
+def test_certs_by_type_and_path_check():
+    grouped = main.certs_by_type()
+    assert len(grouped["offensive"]) == 6
+    assert [c["code"] for c in grouped["defensive"]] == ["CDSA"]
+    assert [c["code"] for c in grouped["junior"]] == ["CJCA"]
+    path = main.cert_path_check(["CJCA", "CDSA"])
+    assert path["percent_complete"] == 25.0
+    assert path["next_suggested"]["code"] == "CPTS"
+    assert main.cert_path_check(main.CERT_PATH_ORDER)["next_suggested"] is None
+
+
+def test_cert_cross_links():
+    assert main.cert_domains("CWPE") == ["Network Security"]
+    assert main.cert_domains("CDSA") == ["SOC Operations", "Incident Response"]
+    for cert in main.get_htb_certs():
+        for domain in main.cert_domains(cert["code"]):
+            assert domain in main.CYBER_DOMAINS
+        for layer in main.cert_career_layers(cert["code"]):
+            assert layer in main.CAREER_STACK
+
+
+def test_agent_loop_topology_and_failure_points():
+    model = main.agent_loop_model()
+    assert model["sub_agent_count"] == 3
+    assert model["loop_steps"] == ["plan", "observe", "execute"]
+    assert model["parent"]["direct_tool_access"] is True
+    points = main.failure_points()
+    assert main.count_failure_points() == len(points) == 15
+    assert len(points) >= 8
+    ids = {f["id"] for f in points}
+    assert "parent->llm" in ids and "parent->tool" in ids
+    for i in (1, 2, 3):
+        assert f"sub-agent-{i}->llm" in ids
+        assert f"sub-agent-{i}->tool" in ids
+    assert all(f["risk"] for f in points)
+
+
+def test_agent_run_simulation_deterministic():
+    run = main.simulate_agent_run(seed=5)
+    assert run == main.simulate_agent_run(seed=5)
+    assert run["llm_calls"] > 0 and run["tool_calls"] > 0
+    assert main.simulate_agent_run(seed=5, fail_rate=0.0)["failures"] == 0
+    hot = main.simulate_agent_run(seed=5, fail_rate=1.0)
+    assert hot["failures"] == hot["handoffs"] and hot["completed"] is False
+
+
+def test_shannon_profile_pipeline_and_label():
+    profile = main.shannon_profile()
+    assert profile["vendor"] == "Keygraph"
+    assert profile["authorized_label"] == "-Authorized Security Testing Only-"
+    assert "#1 Repository Of The Day" in profile["recognition"]
+    stages = main.pentest_agent_pipeline()["stages"]
+    assert [s["name"] for s in stages] == [
+        "Source analysis", "Attack-path identification",
+        "Exploit-proof validation", "Report"]
+    assert "-Authorized Security Testing Only-" in main.render_shannon()
+
+
+def test_shannon_pentera_cross_link():
+    comparison = main.compare_shannon_pentera()
+    assert comparison["pentera"]["description"] == \
+        "Agentic AI pentesting for continuous security validation."
+    assert "Penetration Testing" in comparison["shared_domains"]
+    agents = main.get_pentest_agents()
+    assert [a["name"] for a in agents] == ["Shannon", "Pentera"]
+    assert agents[0]["authorized_label"] == "-Authorized Security Testing Only-"
+
+
+def test_claude_course_structure_progress_and_links():
+    course = main.get_claude_course()
+    assert len(course["boxes"]) == 10
+    assert course["source"] == "Jobescape ad, @jobescape_ai"
+    modules = main.course_modules()
+    assert [m["id"] for m in modules] == [
+        "basics", "prompting", "artifacts", "skills", "workflows",
+        "connectors", "automation", "claude-code"]
+    progress = main.course_progress(["basics", "prompting"])
+    assert progress["percent_complete"] == 25.0
+    assert progress["next_module"]["id"] == "artifacts"
+    assert main.course_module_codes("artifacts") == [
+        "artifacts-build", "artifacts-review"]
+    assert len(main.course_module_codes("prompting")) == 14
+    assert "@jobescape_ai" in main.render_course()
+
+
+def test_merge10_knowledge_surface_and_voice():
+    counts = main.knowledge10_counts()
+    assert counts["htb_certs"] == 8 and counts["failure_points"] == 15
+    assert counts["course_boxes"] == 10
+    assert "Failure points modelled: 15" in main.render_knowledge()
+    assert main.parse_voice_command("ACD certs")["mode"] == "certs"
+    assert main.parse_voice_command("ACD shannon")["mode"] == "shannon"
+    assert main.parse_voice_command("ACD claude course")["mode"] == "course"
+    assert main.parse_voice_command("ACD agent loop")["mode"] == "agentloop"

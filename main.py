@@ -1923,6 +1923,10 @@ VOICE_GRAMMAR = [
     (("career stack", "career path", "career reality", "career"), "career"),
     (("cyber map", "cybermap", "cybersecurity domains", "what cybersecurity actually is"), "cybermap"),
     (("knowledge layer", "knowledge", "merge 9", "merge nine"), "knowledge"),
+    (("hack the box", "certifications", "certificates", "certs"), "certs"),
+    (("agent loop", "orchestration", "agentloop"), "agentloop"),
+    (("shannon",), "shannon"),
+    (("claude course", "full claude course", "course"), "course"),
     (("monad tps", "monad throughput", "monad speed"), "monad-tps"),
     (("monad parallel", "parallel execution"), "monad-parallel"),
     (("monad quantum risk", "monad risk"), "monad-risk"),
@@ -3811,11 +3815,573 @@ def render_knowledge():
     lines.append("")
     lines.append(CLAUDE_CODES_DUPLICATION_NOTE)
     lines.append(GEMINI_DUPLICATION_NOTE)
+    lines.append("")
+    lines.append(render_knowledge10().rstrip())
     return "\n".join(lines) + "\n"
 
 
 # --------------------------------------------------------------------------
-# 16. Self-checks
+# 16. Merge 10 - certifications, agent-loop model, Shannon catalog entry
+#     and the Full Claude Course (offline models / catalog data only)
+# --------------------------------------------------------------------------
+
+MERGE10_HONESTY_NOTE = (
+    "Merge 10 = offline catalog data and architecture/simulation models "
+    "only. No real LLM calls, no real tool execution, no exploits, no "
+    "scanning of any target. Shannon is a reference catalog entry, not "
+    "the separate Shannon RE lab project.")
+
+# --- 16a. Hack The Box certifications (8) -----------------------------------
+# HONESTY: the source certificates are EXAMPLE certificates issued to
+# "Kevin Roberts" as printed. ACD catalogues the CERTIFICATIONS
+# themselves; it never claims Darion Kellar (or anyone else) holds them.
+
+HTB_ISSUER = "Hack The Box"
+HTB_HOLDER_AS_PRINTED = "Kevin Roberts"
+HTB_HOLDER_LABEL = ("Holder as printed on the source example certificates: "
+                    "Kevin Roberts (example certificates - NOT a claim "
+                    "that Darion Kellar holds these certifications)")
+HTB_SIGNATORIES = [
+    {"name": "Charalampos Pylarinos", "role": "CEO"},
+    {"name": "Dimitrios Bougioukas",
+     "role": "Training Director / VP of Training"},
+]
+
+HTB_CERTS = [
+    {"code": "CPTS", "name": "Certified Penetration Testing Specialist",
+     "type": "offensive", "date_as_printed": "12 Feb 2026"},
+    {"code": "CWES", "name": "Certified Web Exploitation Specialist",
+     "type": "offensive", "date_as_printed": "24 Apr 2026"},
+    {"code": "CAPE", "name": "Certified Active Directory Pentesting Expert",
+     "type": "offensive", "date_as_printed": "08 Jun 2026"},
+    {"code": "CWEE", "name": "Certified Web Exploitation Expert",
+     "type": "offensive", "date_as_printed": "19 Aug 2026"},
+    {"code": "COAE", "name": "HTB Certified Offensive AI Expert",
+     "type": "offensive", "date_as_printed": "14 Oct 2026"},
+    {"code": "CWPE", "name": "HTB Certified Wi-Fi Pentesting Expert",
+     "type": "offensive", "date_as_printed": "03 Mar 2026"},
+    {"code": "CDSA", "name": "Certified Defensive Security Analyst",
+     "type": "defensive", "date_as_printed": "27 Jan 2026"},
+    {"code": "CJCA", "name": "Certified Junior Cybersecurity Associate",
+     "type": "junior", "date_as_printed": "21 May 2026"},
+]
+
+# Suggested progression ladder (junior -> defensive/offensive foundations
+# -> specialist -> expert).
+CERT_PATH_ORDER = ["CJCA", "CDSA", "CPTS", "CWES", "CWPE", "CAPE", "CWEE",
+                   "COAE"]
+
+_CERT_DOMAINS = {
+    "CPTS": ["Penetration Testing"],
+    "CWES": ["Application Security", "Penetration Testing"],
+    "CAPE": ["Penetration Testing", "Identity & Access Management"],
+    "CWEE": ["Application Security", "Penetration Testing"],
+    "COAE": ["Penetration Testing", "Application Security"],
+    "CWPE": ["Network Security"],
+    "CDSA": ["SOC Operations", "Incident Response"],
+    "CJCA": ["Security Awareness", "Security Architecture"],
+}
+
+_CERT_CAREER_LAYERS = {
+    "CPTS": ["Penetration Testing", "Vulnerability Assessment"],
+    "CWES": ["Web Application Security", "Penetration Testing"],
+    "CAPE": ["Penetration Testing", "Networking & Protocols"],
+    "CWEE": ["Web Application Security", "Penetration Testing"],
+    "COAE": ["Penetration Testing", "Programming & Scripting"],
+    "CWPE": ["Networking & Protocols", "Penetration Testing"],
+    "CDSA": ["SOC & Threat Monitoring", "Incident Response"],
+    "CJCA": ["Security Fundamentals", "Continuous Learning"],
+}
+
+
+def get_htb_certs():
+    """The 8 Hack The Box certifications (catalog of the certs themselves)."""
+    return [{"code": c["code"], "name": c["name"], "type": c["type"],
+             "date_as_printed": c["date_as_printed"], "issuer": HTB_ISSUER,
+             "holder_as_printed": HTB_HOLDER_AS_PRINTED,
+             "signatories": [dict(s) for s in HTB_SIGNATORIES]}
+            for c in HTB_CERTS]
+
+
+def cert_by_code(code):
+    """One HTB certification by code (case-insensitive), or None."""
+    wanted = str(code).strip().upper()
+    for cert in get_htb_certs():
+        if cert["code"] == wanted:
+            return cert
+    return None
+
+
+def certs_by_type():
+    """Certifications grouped by type: offensive / defensive / junior."""
+    grouped = {"offensive": [], "defensive": [], "junior": []}
+    for cert in get_htb_certs():
+        grouped[cert["type"]].append(cert)
+    return grouped
+
+
+def cert_path_check(held_codes):
+    """Progress along the suggested cert ladder + the next suggested cert."""
+    held = {str(c).strip().upper() for c in held_codes
+            if cert_by_code(c) is not None}
+    remaining = [c for c in CERT_PATH_ORDER if c not in held]
+    total = len(CERT_PATH_ORDER)
+    return {"held": sorted(held), "held_count": len(held),
+            "total_certs": total,
+            "percent_complete": round(100.0 * len(held) / total, 1),
+            "next_suggested": (cert_by_code(remaining[0])
+                               if remaining else None),
+            "remaining_codes": remaining,
+            "holder_note": HTB_HOLDER_LABEL}
+
+
+def cert_domains(code):
+    """Merge 9 cyber domain(s) a certification maps to."""
+    cert = cert_by_code(code)
+    if cert is None:
+        return []
+    return list(_CERT_DOMAINS.get(cert["code"], []))
+
+
+def cert_career_layers(code):
+    """Merge 9 career-stack layer(s) a certification builds on."""
+    cert = cert_by_code(code)
+    if cert is None:
+        return []
+    return list(_CERT_CAREER_LAYERS.get(cert["code"], []))
+
+
+def render_certs():
+    lines = ["HACK THE BOX CERTIFICATIONS (8) - catalog of the certifications",
+             f"Issuer: {HTB_ISSUER}",
+             f"{HTB_HOLDER_LABEL}",
+             "Signatories as printed: " + "; ".join(
+                 f"{s['name']} ({s['role']})" for s in HTB_SIGNATORIES), ""]
+    for cert in get_htb_certs():
+        lines.append(f"{cert['code']:<5} {cert['name']} [{cert['type']}] "
+                     f"- {cert['date_as_printed']}")
+        lines.append(f"      Domains: {', '.join(cert_domains(cert['code']))}"
+                     f" | Career layers: "
+                     f"{', '.join(cert_career_layers(cert['code']))}")
+    lines.append("")
+    lines.append(f"note: {MERGE10_HONESTY_NOTE}")
+    return "\n".join(lines) + "\n"
+
+
+# --- 16b. Agent-loop orchestration model ------------------------------------
+# Architecture model only: a parent agent loops Plan -> Observe -> Execute,
+# calls an LLM, fans out to 3 sub-agents (each with the identical loop, its
+# own LLM and/or Tool), and can call a Tool directly. Slide 2 of the source
+# marks a failure point at EVERY handoff - this model enumerates them.
+
+LOOP_STEPS = ["plan", "observe", "execute"]
+
+
+def agent_loop_model():
+    """Parent + 3 sub-agent loop topology as data (no execution)."""
+    def _agent(agent_id, role):
+        return {"id": agent_id, "role": role, "loop_steps": list(LOOP_STEPS),
+                "calls_llm": True, "calls_tool": True}
+    sub_agents = [_agent(f"sub-agent-{i}", "sub-agent") for i in (1, 2, 3)]
+    parent = _agent("parent", "parent")
+    parent["direct_tool_access"] = True
+    parent["sub_agents"] = [s["id"] for s in sub_agents]
+    return {"parent": parent, "sub_agents": sub_agents,
+            "loop_steps": list(LOOP_STEPS), "sub_agent_count": len(sub_agents),
+            "lesson": ("Every handoff - LLM call, tool call, loop transition "
+                       "and fan-out delegation - is a failure point."),
+            "note": MERGE10_HONESTY_NOTE}
+
+
+def failure_points():
+    """Every handoff in the topology, with its risk note (slide 2 markers)."""
+    points = [
+        {"id": "parent->llm", "handoff": "Parent agent -> LLM",
+         "risk": "LLM hallucination or bad plan: the parent acts on a "
+                 "confidently wrong next step."},
+        {"id": "parent-loop-execute->plan",
+         "handoff": "Parent loop Execute -> Plan (loop transition)",
+         "risk": "Loop drift: each cycle re-plans from a slightly wrong "
+                 "state and the goal quietly mutates."},
+        {"id": "parent->tool", "handoff": "Parent agent -> Tool (direct)",
+         "risk": "Tool error or wrong arguments: a direct call has no "
+                 "sub-agent sanity check before it lands."},
+    ]
+    for i in (1, 2, 3):
+        points.append(
+            {"id": f"parent->sub-agent-{i}",
+             "handoff": f"Parent agent -> Sub-agent {i} (fan-out)",
+             "risk": "Delegation error: a vague or wrong sub-task is "
+                     "executed faithfully, and its failure cascades back "
+                     "into the parent's plan."})
+        points.append(
+            {"id": f"sub-agent-{i}-loop-execute->plan",
+             "handoff": f"Sub-agent {i} loop Execute -> Plan",
+             "risk": "Loop drift inside the sub-agent: local progress "
+                     "diverges from the parent's intent."})
+        points.append(
+            {"id": f"sub-agent-{i}->llm",
+             "handoff": f"Sub-agent {i} -> its LLM",
+             "risk": "LLM hallucination at the leaf: invented facts or "
+                     "commands enter the run with the parent's authority."})
+        points.append(
+            {"id": f"sub-agent-{i}->tool",
+             "handoff": f"Sub-agent {i} -> its Tool",
+             "risk": "Tool error or side effect: a failing or misused tool "
+                     "call corrupts shared state for the whole fan-out."})
+    return points
+
+
+def count_failure_points():
+    """Failure-point count produced by this model (15 handoffs)."""
+    return len(failure_points())
+
+
+def simulate_agent_run(seed=42, fail_rate=0.1, parent_cycles=3,
+                       sub_cycles=2):
+    """
+    Deterministic offline simulation of one fan-out run. Counts planned
+    steps, LLM calls and tool calls, and rolls each handoff against
+    fail_rate with a seeded RNG. No real LLM or tool is ever invoked.
+    """
+    rng = random.Random(seed)
+    stats = {"steps": 0, "llm_calls": 0, "tool_calls": 0, "handoffs": 0,
+             "failures": 0, "failed_points": []}
+
+    def _handoff(point_id):
+        stats["handoffs"] += 1
+        if rng.random() < fail_rate:
+            stats["failures"] += 1
+            stats["failed_points"].append(point_id)
+
+    def _run_loop(agent_id, cycles):
+        for _ in range(cycles):
+            for step in LOOP_STEPS:
+                stats["steps"] += 1
+                if step == "plan":
+                    stats["llm_calls"] += 1
+                    _handoff(f"{agent_id}->llm")
+                if step == "execute":
+                    stats["tool_calls"] += 1
+                    _handoff(f"{agent_id}->tool")
+            _handoff(f"{agent_id}-loop-execute->plan")
+
+    _run_loop("parent", parent_cycles)
+    stats["tool_calls"] += 1  # the parent's one direct tool call
+    _handoff("parent->tool")
+    for i in (1, 2, 3):
+        _handoff(f"parent->sub-agent-{i}")
+        _run_loop(f"sub-agent-{i}", sub_cycles)
+    stats["failure_points_modelled"] = count_failure_points()
+    stats["completed"] = stats["failures"] == 0
+    stats["seed"] = seed
+    stats["fail_rate"] = fail_rate
+    stats["note"] = ("Simulation only - counts are modelled, no LLM was "
+                     "called and no tool was executed.")
+    return stats
+
+
+def render_agentloop():
+    model = agent_loop_model()
+    lines = ["AGENT LOOP ORCHESTRATION - architecture model",
+             "Loop (identical for parent and every sub-agent): "
+             + " -> ".join(s.upper() for s in LOOP_STEPS) + " -> (repeat)",
+             "Parent agent: calls an LLM, can call a Tool directly, and "
+             "fans out to 3 sub-agents.",
+             "Each sub-agent: runs the same loop, can call its own LLM "
+             "and/or a Tool.", "",
+             f"FAILURE POINTS ({count_failure_points()}) - every handoff "
+             "is a failure point (slide 2):"]
+    for point in failure_points():
+        lines.append(f"  - {point['handoff']}: {point['risk']}")
+    sim = simulate_agent_run()
+    lines += ["",
+              f"Sample deterministic simulation (seed 42, fail_rate 0.1): "
+              f"{sim['steps']} steps, {sim['llm_calls']} LLM calls, "
+              f"{sim['tool_calls']} tool calls, {sim['handoffs']} handoffs, "
+              f"{sim['failures']} failures.",
+              f"note: {MERGE10_HONESTY_NOTE}"]
+    return "\n".join(lines) + "\n"
+
+
+# --- 16c. Shannon by Keygraph - catalog / model entry ------------------------
+# Reference model ONLY: no exploit code, no scanner, no live targets.
+# (Darion's separate Shannon RE lab project is a different thing.)
+
+SHANNON_AUTHORIZED_LABEL = "-Authorized Security Testing Only-"
+
+SHANNON_PROFILE = {
+    "name": "Shannon",
+    "version_note": "Shannon 2.0 is officially here",
+    "vendor": "Keygraph",
+    "product": "Keygraph SHANNON",
+    "tagline": "AI Pentester for Web Apps and APIs",
+    "authorized_label": SHANNON_AUTHORIZED_LABEL,
+    "recognition": "#1 Repository Of The Day - GITHUB TRENDING",
+    "description": ("Shannon is an autonomous, AI pentester for web "
+                    "applications and APIs. It analyzes your source code, "
+                    "identifies attack paths, and executes real exploits "
+                    "to prove vulnerabilities before they reach "
+                    "production. This repository is Shannon Open Source: "
+                    "the full agent, run locally from your command line."),
+    "community": "Join Discord",
+    "site": "Keygraph.io",
+    "source": "Darion's screenshot of github.com (Keygraph Shannon repo)",
+    "acd_status": ("catalog / reference model only - ACD does NOT run "
+                   "Shannon, execute exploits or scan any target"),
+}
+
+
+def shannon_profile():
+    """The Shannon catalog profile, facts as printed in the source."""
+    return dict(SHANNON_PROFILE)
+
+
+def pentest_agent_pipeline():
+    """Shannon's modelled stages as an OFFLINE pipeline description."""
+    stages = [
+        {"stage": 1, "name": "Source analysis",
+         "description": "Analyse the target application's source code "
+                        "(model description only - nothing is scanned)."},
+        {"stage": 2, "name": "Attack-path identification",
+         "description": "Identify plausible attack paths through the "
+                        "analysed code."},
+        {"stage": 3, "name": "Exploit-proof validation",
+         "description": "In Shannon itself, exploits prove a vulnerability "
+                        "is real; in ACD this stage is a labelled model "
+                        "step only - no exploit is implemented or run."},
+        {"stage": 4, "name": "Report",
+         "description": "Report proven vulnerabilities before they reach "
+                        "production."},
+    ]
+    return {"agent": "Shannon", "authorized_label": SHANNON_AUTHORIZED_LABEL,
+            "stages": stages, "note": MERGE10_HONESTY_NOTE}
+
+
+def compare_shannon_pentera():
+    """Shannon (Merge 10 catalog) vs Pentera (Merge 9 tool #12)."""
+    pentera = _tool_by_name("Pentera")
+    return {
+        "shannon": {"name": "Shannon", "vendor": "Keygraph",
+                    "form": "Open-source autonomous AI pentester agent, "
+                            "run locally from the command line",
+                    "focus": "Web applications and APIs, source-code driven",
+                    "authorized_label": SHANNON_AUTHORIZED_LABEL},
+        "pentera": {"name": "Pentera",
+                    "category": pentera["category"] if pentera else None,
+                    "description": pentera["description"] if pentera else None,
+                    "form": "Commercial agentic AI pentesting platform",
+                    "focus": "Continuous security validation"},
+        "shared_domains": sorted(set(domain_for_tool("Pentera"))
+                                 & {"Penetration Testing",
+                                    "Vulnerability Management"}),
+        "agent_loop_link": ("Both are instances of the agent-loop pattern "
+                            "modelled in agent_loop_model(): plan, observe, "
+                            "execute, with an LLM and tools at the "
+                            "handoffs - and a failure point at each one."),
+        "note": MERGE10_HONESTY_NOTE}
+
+
+def get_pentest_agents():
+    """Pentest-agent cross-reference: Shannon + Pentera."""
+    pentera = _tool_by_name("Pentera")
+    return [
+        {"name": "Shannon", "kind": "catalog profile (Merge 10)",
+         "vendor": "Keygraph", "authorized_label": SHANNON_AUTHORIZED_LABEL,
+         "domains": ["Penetration Testing", "Application Security"]},
+        {"name": "Pentera", "kind": "AI tool catalog entry (Merge 9, #12)",
+         "category": pentera["category"] if pentera else None,
+         "description": pentera["description"] if pentera else None,
+         "domains": domain_for_tool("Pentera")},
+    ]
+
+
+def render_shannon():
+    profile = shannon_profile()
+    pipeline = pentest_agent_pipeline()
+    lines = [f"{profile['product']} - {profile['tagline']}",
+             profile["authorized_label"],
+             f"{profile['version_note']} | {profile['recognition']}",
+             profile["description"],
+             f"Community: {profile['community']} | {profile['site']}",
+             f"ACD status: {profile['acd_status']}", "",
+             "Modelled pipeline (offline description, nothing is run):"]
+    for stage in pipeline["stages"]:
+        lines.append(f"  {stage['stage']}. {stage['name']} - "
+                     f"{stage['description']}")
+    lines += ["", "Cross-link: Shannon vs Pentera (Merge 9 tool #12) - "
+              "see compare_shannon_pentera(); both follow the agent-loop "
+              "pattern (Merge 10, agentloop mode).",
+              f"note: {MERGE10_HONESTY_NOTE}"]
+    return "\n".join(lines) + "\n"
+
+
+# --- 16d. Full Claude Course (Jobescape / @jobescape_ai) ---------------------
+
+COURSE_SOURCE = "Jobescape ad, @jobescape_ai"
+COURSE_TITLE = "FULL CLAUDE COURSE - FROM BASICS TO POWER USER"
+COURSE_SUBTITLE = "Learn Claude. Build Workflows. Master AI."
+COURSE_TAGLINE = ("START YOUR CLAUDE JOURNEY - Learn the tools. Practice "
+                  "the workflows. Build smarter.")
+COURSE_PROGRESSION = ["Beginner", "Prompting", "Artifacts", "Workflows",
+                      "Automation", "Advanced Claude"]
+COURSE_FLOW = ["LEARN", "PRACTICE", "BUILD", "REFINE", "APPLY"]
+
+CLAUDE_COURSE = [
+    {"number": 1, "id": "basics", "title": "CLAUDE BASICS",
+     "subtitle": "START HERE", "learning_module": True,
+     "topics": ["What is Claude?", "How Claude works", "Interface",
+                "Context", "Conversations", "Best practices"]},
+    {"number": 2, "id": "prompting", "title": "PROMPTING",
+     "subtitle": "PROMPT ENGINEERING", "learning_module": True,
+     "topics": ["Role prompting", "Context", "Instructions", "Constraints",
+                "Examples", "Prompt refinement"]},
+    {"number": 3, "id": "artifacts", "title": "ARTIFACTS",
+     "subtitle": "BUILD WITH CLAUDE", "learning_module": True,
+     "topics": ["Create", "Edit", "Refine", "Documents", "Tables",
+                "Presentations", "Interactive outputs"]},
+    {"number": 4, "id": "skills", "title": "CLAUDE SKILLS",
+     "subtitle": "SKILLS", "learning_module": True,
+     "topics": ["Research", "Writing", "Analysis", "Coding",
+                "Custom skills", "Reusable capabilities"]},
+    {"number": 5, "id": "workflows", "title": "WORKFLOWS",
+     "subtitle": "WORKFLOW DESIGN", "learning_module": True,
+     "topics": ["Idea -> Research -> Create -> Review -> Refine",
+                "Step-by-step workflows", "Multi-step tasks",
+                "Quality checks", "Reusable processes"]},
+    {"number": 6, "id": "connectors", "title": "CONNECTORS",
+     "subtitle": "CONNECT & INTEGRATE", "learning_module": True,
+     "topics": ["Connect information", "Organize knowledge",
+                "Work with external sources",
+                "Build connected workflows"]},
+    {"number": 7, "id": "automation", "title": "AUTOMATION",
+     "subtitle": "AUTOMATE", "learning_module": True,
+     "topics": ["Trigger -> Claude -> Action -> Result", "Triggers",
+                "Actions", "Conditions", "Task automation",
+                "Reusable systems"]},
+    {"number": 8, "id": "claude-code", "title": "CLAUDE CODE",
+     "subtitle": "CODE & BUILD", "learning_module": True,
+     "topics": ["Code generation", "Code explanation", "Debugging",
+                "Refactoring", "Documentation", "Data analysis"]},
+    {"number": 9, "id": "outcomes", "title": "WHAT YOU'LL LEARN",
+     "subtitle": "", "learning_module": False,
+     "topics": ["Prompting", "Artifacts", "Skills", "Research", "Workflows",
+                "Automation", "Coding", "Real-world applications"]},
+    {"number": 10, "id": "how-it-works", "title": "HOW THE COURSE WORKS",
+     "subtitle": "", "learning_module": False,
+     "topics": list(COURSE_FLOW)},
+]
+
+_COURSE_CODE_LINKS = {
+    "prompting": [c["key"] for c in CLAUDE_CODES],
+    "artifacts": ["artifacts-build", "artifacts-review"],
+    "basics": ["brief", "explainlikeim5", "teacher"],
+    "skills": ["artifacts-build", "teacher"],
+    "workflows": ["ooda", "compare", "scout"],
+    "connectors": ["compare"],
+    "automation": ["ooda"],
+    "claude-code": ["critique", "10x", "devil"],
+}
+
+
+def get_claude_course():
+    """The full course as printed: 10 boxes + progression + tagline."""
+    return {"title": COURSE_TITLE, "subtitle": COURSE_SUBTITLE,
+            "source": COURSE_SOURCE, "tagline": COURSE_TAGLINE,
+            "progression": list(COURSE_PROGRESSION),
+            "flow": list(COURSE_FLOW),
+            "boxes": [dict(b) for b in CLAUDE_COURSE]}
+
+
+def course_modules():
+    """The 8 learning modules in start-here order."""
+    return [dict(b) for b in CLAUDE_COURSE if b["learning_module"]]
+
+
+def course_progress(completed_modules):
+    """Progress over the 8 learning modules: % complete + next module."""
+    done = {str(m).strip().lower() for m in completed_modules}
+    modules = course_modules()
+    completed = [b for b in modules
+                 if b["id"] in done or b["title"].lower() in done]
+    remaining = [b for b in modules if b not in completed]
+    total = len(modules)
+    return {"completed": [b["id"] for b in completed],
+            "completed_count": len(completed), "total_modules": total,
+            "percent_complete": round(100.0 * len(completed) / total, 1),
+            "next_module": (dict(remaining[0]) if remaining else None),
+            "progression": list(COURSE_PROGRESSION)}
+
+
+def course_module_codes(module_id):
+    """Merge 9 Claude-code keys a course module cross-links to."""
+    return list(_COURSE_CODE_LINKS.get(str(module_id).strip().lower(), []))
+
+
+def render_course():
+    course = get_claude_course()
+    lines = [course["title"], course["subtitle"],
+             f"Source: {course['source']}", ""]
+    for box in course["boxes"]:
+        sub = f" ({box['subtitle']})" if box["subtitle"] else ""
+        lines.append(f"{box['number']:>2}. {box['title']}{sub}")
+        lines.append(f"    {', '.join(box['topics'])}")
+        codes = course_module_codes(box["id"])
+        if codes:
+            lines.append(f"    Merge 9 Claude codes: "
+                         f"{', '.join('/' + claude_code(k)['code'].lstrip('/') if claude_code(k) else k for k in codes)}")
+    lines += ["",
+              "Progression - FROM BEGINNER TO POWER USER: "
+              + " -> ".join(course["progression"]),
+              course["tagline"],
+              f"note: {MERGE10_HONESTY_NOTE}"]
+    return "\n".join(lines) + "\n"
+
+
+# --- 16e. Unified Merge 10 surface -------------------------------------------
+
+def knowledge10_counts():
+    """Entry counts for the Merge 10 layer."""
+    return {"htb_certs": len(HTB_CERTS),
+            "agent_topologies": 1,
+            "agents_modelled": 1 + agent_loop_model()["sub_agent_count"],
+            "sub_agents": agent_loop_model()["sub_agent_count"],
+            "failure_points": count_failure_points(),
+            "shannon_profiles": 1,
+            "shannon_pipeline_stages": len(pentest_agent_pipeline()["stages"]),
+            "course_boxes": len(CLAUDE_COURSE),
+            "course_learning_modules": len(course_modules())}
+
+
+def render_knowledge10():
+    counts = knowledge10_counts()
+    lines = ["MERGE 10 - CERTS, AGENT LOOPS, SHANNON, CLAUDE COURSE",
+             f"note: {MERGE10_HONESTY_NOTE}", "",
+             f"HTB certifications: {counts['htb_certs']} "
+             f"(holder as printed: {HTB_HOLDER_AS_PRINTED} - example "
+             f"certificates, not Darion's)",
+             f"Agent-loop topologies: {counts['agent_topologies']} "
+             f"(1 parent + {counts['sub_agents']} sub-agents, loop: "
+             f"{' -> '.join(LOOP_STEPS)})",
+             f"Failure points modelled: {counts['failure_points']}",
+             f"Shannon profiles: {counts['shannon_profiles']} "
+             f"({SHANNON_AUTHORIZED_LABEL})",
+             f"Shannon pipeline stages: {counts['shannon_pipeline_stages']}",
+             f"Claude Course boxes: {counts['course_boxes']} "
+             f"({counts['course_learning_modules']} learning modules)",
+             "", "Cross-links:",
+             "  Cert -> domains: "
+             + "; ".join(f"{c['code']} -> {', '.join(cert_domains(c['code']))}"
+                         for c in HTB_CERTS),
+             "  Shannon <-> Pentera: compare_shannon_pentera() - both "
+             "follow the agent-loop pattern.",
+             "  Course -> Claude codes: Artifacts module <-> /artifacts "
+             "(build + review); Prompting <-> all 14 codes."]
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------
+# 17. Self-checks
 # --------------------------------------------------------------------------
 
 def _raises_value_error(fn):
@@ -4268,6 +4834,114 @@ def run_checks():
           and parse_voice_command("ACD prompt codes")["mode"] == "codes"
           and parse_voice_command("ACD knowledge")["mode"] == "knowledge")
 
+    # Merge 10 - certs, agent loop, Shannon, Claude Course
+    _c10 = knowledge10_counts()
+    check("Merge 10 counts: 8 certs, 1 topology + 3 subs, 1 Shannon, 10 boxes",
+          _c10["htb_certs"] == 8 and _c10["agent_topologies"] == 1
+          and _c10["sub_agents"] == 3 and _c10["agents_modelled"] == 4
+          and _c10["shannon_profiles"] == 1 and _c10["course_boxes"] == 10
+          and _c10["course_learning_modules"] == 8)
+    check("HTB certs: codes as printed, holder labelled Kevin Roberts (example)",
+          [c["code"] for c in get_htb_certs()] ==
+          ["CPTS", "CWES", "CAPE", "CWEE", "COAE", "CWPE", "CDSA", "CJCA"]
+          and cert_by_code("CPTS")["name"] ==
+          "Certified Penetration Testing Specialist"
+          and cert_by_code("cpts")["issuer"] == "Hack The Box"
+          and all(c["holder_as_printed"] == "Kevin Roberts"
+                  for c in get_htb_certs())
+          and "NOT a claim" in HTB_HOLDER_LABEL
+          and cert_by_code("XXXX") is None)
+    _types = certs_by_type()
+    check("certs_by_type: 6 offensive, 1 defensive, 1 junior",
+          len(_types["offensive"]) == 6 and len(_types["defensive"]) == 1
+          and len(_types["junior"]) == 1
+          and _types["defensive"][0]["code"] == "CDSA"
+          and _types["junior"][0]["code"] == "CJCA")
+    _cpath = cert_path_check(["CJCA", "CDSA"])
+    check("cert_path_check math: 2/8 -> 25.0%, next suggested CPTS",
+          _cpath["held_count"] == 2 and _cpath["percent_complete"] == 25.0
+          and _cpath["next_suggested"]["code"] == "CPTS"
+          and cert_path_check(CERT_PATH_ORDER)["next_suggested"] is None)
+    check("cert cross-links resolve to Merge 9 domains + career layers",
+          cert_domains("CWPE") == ["Network Security"]
+          and cert_domains("CDSA") == ["SOC Operations", "Incident Response"]
+          and "Penetration Testing" in cert_domains("COAE")
+          and all(d in CYBER_DOMAINS for c in HTB_CERTS
+                  for d in cert_domains(c["code"]))
+          and all(l in CAREER_STACK for c in HTB_CERTS
+                  for l in cert_career_layers(c["code"])))
+    _loop = agent_loop_model()
+    check("agent loop topology: 1 parent + 3 sub-agents, steps plan/observe/execute",
+          _loop["sub_agent_count"] == 3 and _loop["loop_steps"] ==
+          ["plan", "observe", "execute"]
+          and _loop["parent"]["loop_steps"] == ["plan", "observe", "execute"]
+          and all(s["loop_steps"] == ["plan", "observe", "execute"]
+                  for s in _loop["sub_agents"])
+          and _loop["parent"]["direct_tool_access"] is True)
+    _fps = failure_points()
+    check("failure points >= 8 and every handoff type covered",
+          count_failure_points() == len(_fps) and len(_fps) >= 8
+          and any(f["id"] == "parent->llm" for f in _fps)
+          and any(f["id"] == "parent->tool" for f in _fps)
+          and sum(1 for f in _fps if f["id"].startswith("sub-agent")
+                  and f["id"].endswith("->llm")) == 3
+          and sum(1 for f in _fps if f["id"].startswith("sub-agent")
+                  and f["id"].endswith("->tool")) == 3
+          and len(_fps) == 15
+          and all(f["risk"] for f in _fps))
+    check("agent run simulation is deterministic and counts calls",
+          simulate_agent_run(seed=5) == simulate_agent_run(seed=5)
+          and simulate_agent_run(seed=5)["llm_calls"] > 0
+          and simulate_agent_run(seed=5, fail_rate=0.0)["failures"] == 0
+          and simulate_agent_run(seed=5, fail_rate=1.0)["failures"] ==
+          simulate_agent_run(seed=5, fail_rate=1.0)["handoffs"])
+    _shan = shannon_profile()
+    _pipe = pentest_agent_pipeline()
+    check("Shannon: authorized-only label in profile, pipeline and render",
+          _shan["authorized_label"] == "-Authorized Security Testing Only-"
+          and _shan["vendor"] == "Keygraph"
+          and "AI Pentester for Web Apps and APIs" in _shan["tagline"]
+          and _pipe["authorized_label"] == _shan["authorized_label"]
+          and "-Authorized Security Testing Only-" in render_shannon())
+    check("Shannon pipeline stage order: analysis -> paths -> proof -> report",
+          [s["name"] for s in _pipe["stages"]] ==
+          ["Source analysis", "Attack-path identification",
+           "Exploit-proof validation", "Report"])
+    _cmp = compare_shannon_pentera()
+    check("Shannon <-> Pentera cross-link resolves both ways",
+          _cmp["shannon"]["vendor"] == "Keygraph"
+          and _cmp["pentera"]["description"] ==
+          "Agentic AI pentesting for continuous security validation."
+          and "Penetration Testing" in _cmp["shared_domains"]
+          and [a["name"] for a in get_pentest_agents()] ==
+          ["Shannon", "Pentera"]
+          and "agent-loop" in _cmp["agent_loop_link"])
+    _prog = course_progress(["basics", "prompting"])
+    check("Claude Course: 10 boxes, 8 learning modules, progress math",
+          len(get_claude_course()["boxes"]) == 10
+          and len(course_modules()) == 8
+          and course_modules()[0]["id"] == "basics"
+          and course_modules()[-1]["id"] == "claude-code"
+          and _prog["percent_complete"] == 25.0
+          and _prog["next_module"]["id"] == "artifacts")
+    check("course cross-links to Merge 9 Claude codes resolve",
+          course_module_codes("artifacts") ==
+          ["artifacts-build", "artifacts-review"]
+          and len(course_module_codes("prompting")) == 14
+          and all(claude_code(k) is not None
+                  for m in _COURSE_CODE_LINKS.values() for k in m))
+    check("Merge 10 renders carry honesty labels and credits",
+          "Kevin Roberts" in render_certs()
+          and "FAILURE POINTS" in render_agentloop()
+          and "@jobescape_ai" in render_course()
+          and "TOTAL ENTRIES: 154" in render_knowledge()
+          and "Failure points modelled:" in render_knowledge())
+    check("voice grammar routes Merge 10 phrases to the new modes",
+          parse_voice_command("ACD certs")["mode"] == "certs"
+          and parse_voice_command("ACD agent loop")["mode"] == "agentloop"
+          and parse_voice_command("ACD shannon")["mode"] == "shannon"
+          and parse_voice_command("ACD claude course")["mode"] == "course")
+
 
     passed = sum(1 for _, ok in checks if ok)
     for name, ok in checks:
@@ -4351,6 +5025,15 @@ def demo():
           f"{_know['cyber_domains']} cyber domains = "
           f"{_know['total_entries']} entries "
           f"(catalog only - no live vendor calls)")
+    _k10 = knowledge10_counts()
+    print(f"Merge 10: {_k10['htb_certs']} HTB certifications catalogued "
+          f"(example certificates, holder as printed), agent-loop model "
+          f"(1 parent + {_k10['sub_agents']} sub-agents, "
+          f"{_k10['failure_points']} failure points), Shannon catalog "
+          f"entry (authorized testing only), Claude Course "
+          f"{_k10['course_boxes']} boxes / "
+          f"{_k10['course_learning_modules']} learning modules "
+          f"(models only - no LLM calls, no exploits)")
     print()
     return run_checks()
 
@@ -4365,7 +5048,8 @@ def main(argv=None):
                                  "monad", "monad-tps", "monad-parallel",
                                  "monad-risk", "monad-plan",
                                  "aitools", "codes", "glossary", "career",
-                                 "cybermap", "knowledge"])
+                                 "cybermap", "knowledge",
+                                 "certs", "agentloop", "shannon", "course"])
     parser.add_argument("body_arg", nargs="?", default=None,
                         help="Optional body name (streetview) or transcript (voice)")
     parser.add_argument("--scope", default="all", choices=["all", "national", "international"])
@@ -4770,6 +5454,18 @@ def main(argv=None):
         return 0
     if args.mode == "knowledge":
         print(render_knowledge(), end="")
+        return 0
+    if args.mode == "certs":
+        print(render_certs(), end="")
+        return 0
+    if args.mode == "agentloop":
+        print(render_agentloop(), end="")
+        return 0
+    if args.mode == "shannon":
+        print(render_shannon(), end="")
+        return 0
+    if args.mode == "course":
+        print(render_course(), end="")
         return 0
     return 0 if demo() else 1
 
